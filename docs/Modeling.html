@@ -6,8 +6,9 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
+<meta name="author" content="Michelle A Silveira">
 
-<title>Modeling</title>
+<title>Diabetes Health Indicators – Modeling</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -70,28 +71,63 @@ ul.task-list li input[type="checkbox"] {
 
 </head>
 
-<body class="quarto-light">
+<body class="floating quarto-light">
 
 <div id="quarto-search-results"></div>
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
 <!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#introduction" id="toc-introduction" class="nav-link active" data-scroll-target="#introduction">Introduction</a></li>
+  <li><a href="#load-packages" id="toc-load-packages" class="nav-link" data-scroll-target="#load-packages">Load Packages</a></li>
+  <li><a href="#read-and-prepare-the-data" id="toc-read-and-prepare-the-data" class="nav-link" data-scroll-target="#read-and-prepare-the-data">Read and Prepare the Data</a></li>
+  <li><a href="#traintest-split" id="toc-traintest-split" class="nav-link" data-scroll-target="#traintest-split">Train/Test Split</a></li>
+  <li><a href="#modeling-strategy-and-predictors" id="toc-modeling-strategy-and-predictors" class="nav-link" data-scroll-target="#modeling-strategy-and-predictors">Modeling Strategy and Predictors</a></li>
+  <li><a href="#classification-tree" id="toc-classification-tree" class="nav-link" data-scroll-target="#classification-tree">Classification Tree</a>
+  <ul class="collapse">
+  <li><a href="#model-specification" id="toc-model-specification" class="nav-link" data-scroll-target="#model-specification">Model Specification</a></li>
+  <li><a href="#tuning-grid" id="toc-tuning-grid" class="nav-link" data-scroll-target="#tuning-grid">Tuning Grid</a></li>
+  <li><a href="#workflow-and-cross-validation" id="toc-workflow-and-cross-validation" class="nav-link" data-scroll-target="#workflow-and-cross-validation">Workflow and Cross-Validation</a></li>
+  <li><a href="#fit-final-tree-and-evaluate-on-the-test-set" id="toc-fit-final-tree-and-evaluate-on-the-test-set" class="nav-link" data-scroll-target="#fit-final-tree-and-evaluate-on-the-test-set">Fit Final Tree and Evaluate on the Test Set</a></li>
+  </ul></li>
+  <li><a href="#random-forest" id="toc-random-forest" class="nav-link" data-scroll-target="#random-forest">Random Forest</a>
+  <ul class="collapse">
+  <li><a href="#model-specification-1" id="toc-model-specification-1" class="nav-link" data-scroll-target="#model-specification-1">Model Specification</a></li>
+  <li><a href="#tuning-grid-1" id="toc-tuning-grid-1" class="nav-link" data-scroll-target="#tuning-grid-1">Tuning Grid</a></li>
+  <li><a href="#workflow-and-cross-validation-1" id="toc-workflow-and-cross-validation-1" class="nav-link" data-scroll-target="#workflow-and-cross-validation-1">Workflow and Cross-Validation</a></li>
+  <li><a href="#fit-final-random-forest-and-evaluate-on-the-test-set" id="toc-fit-final-random-forest-and-evaluate-on-the-test-set" class="nav-link" data-scroll-target="#fit-final-random-forest-and-evaluate-on-the-test-set">Fit Final Random Forest and Evaluate on the Test Set</a></li>
+  </ul></li>
+  <li><a href="#final-model-comparison" id="toc-final-model-comparison" class="nav-link" data-scroll-target="#final-model-comparison">Final Model Comparison</a></li>
+  <li><a href="#conclusion" id="toc-conclusion" class="nav-link" data-scroll-target="#conclusion">Conclusion</a></li>
+  </ul>
+</nav>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
-        
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Modeling</h1>
+<h1 class="title">Diabetes Health Indicators – Modeling</h1>
 </div>
 
 
 
 <div class="quarto-title-meta">
 
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Michelle A Silveira </p>
+          </div>
+  </div>
     
   
     
@@ -102,8 +138,490 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
+<section id="introduction" class="level2">
+<h2 class="anchored" data-anchor-id="introduction">Introduction</h2>
+<p>In this report we build and compare predictive models for diabetes using the <strong>Diabetes Health Indicators</strong> dataset (<code>diabetes_binary_health_indicators_BRFSS2015</code>). The original outcome variable, <code>Diabetes_012</code>, has three categories:</p>
+<ul>
+<li><code>0</code> = no diabetes<br>
+</li>
+<li><code>1</code> = prediabetes<br>
+</li>
+<li><code>2</code> = diabetes</li>
+</ul>
+<p>For this project we follow the course instructions and work with a <strong>binary</strong> response. We define a new variable, <code>Diabetes_binary</code>, that indicates whether a respondent has diabetes (<code>1</code>) or not (<code>0</code>):</p>
+<ul>
+<li><code>Diabetes_binary = 1</code> if <code>Diabetes_012 == 2</code> (diabetes)<br>
+</li>
+<li><code>Diabetes_binary = 0</code> otherwise (no diabetes or prediabetes)</li>
+</ul>
+<p>Our goals in this document are to:</p>
+<ul>
+<li>Create a training/test split of the data.</li>
+<li>Specify a modeling recipe based on insights from the EDA.</li>
+<li>Fit and tune a <strong>classification tree</strong> model.</li>
+<li>Fit and tune a <strong>random forest</strong> model.</li>
+<li>Use <strong>log-loss</strong> with 5-fold cross-validation to select the best model in each family.</li>
+<li>Compare the final tuned models on the test set and select a winner.</li>
+</ul>
+<p>We use the <strong>tidymodels</strong> framework to keep preprocessing, resampling, tuning, and evaluation organized and reproducible.</p>
+<hr>
+</section>
+<section id="load-packages" class="level2">
+<h2 class="anchored" data-anchor-id="load-packages">Load Packages</h2>
+<p>We begin by loading the packages needed for modeling.</p>
+<pre class="{r}"><code>#| label: setup-packages
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(lubridate)
+library(janitor)
+library(tidymodels)
+
+tidymodels_prefer()
+theme_set(theme_minimal())</code></pre>
+<hr>
+</section>
+<section id="read-and-prepare-the-data" class="level2">
+<h2 class="anchored" data-anchor-id="read-and-prepare-the-data">Read and Prepare the Data</h2>
+<p>Here we read the same dataset used in the EDA and perform minimal cleaning so that the modeling file is self-contained. We:</p>
+<ul>
+<li>Keep a numeric copy of <code>Diabetes_012</code>.</li>
+<li>Create a <strong>binary</strong> outcome <code>Diabetes_binary</code> (No_diabetes vs Diabetes).</li>
+<li>Recode <code>Sex</code> as a factor with labels.</li>
+<li>Provide interpretable labels for <code>GenHlth</code> and <code>Age</code>.</li>
+</ul>
+<pre class="{r}"><code>#| label: read-and-clean
+#| message: false
+#| warning: false
+
+diabetes_raw &lt;- readr::read_csv(
+  "data/diabetes_binary_health_indicators_BRFSS2015.csv"
+)
+
+age_labels &lt;- c(
+  "18–24", "25–29", "30–34", "35–39",
+  "40–44", "45–49", "50–54", "55–59",
+  "60–64", "65–69", "70–74", "75–79", "80+"
+)
+
+diabetes &lt;- diabetes_raw |&gt;
+  mutate(
+    Diabetes_num = Diabetes_012,
+    Diabetes_012 = factor(
+      Diabetes_012,
+      levels = c(0, 1, 2),
+      labels = c("No_diabetes", "Prediabetes", "Diabetes")
+    ),
+    # Binary response for modeling
+    Diabetes_binary = if_else(Diabetes_012 == "Diabetes", 1, 0),
+    Diabetes_binary = factor(
+      Diabetes_binary,
+      levels = c(0, 1),
+      labels = c("No_diabetes", "Diabetes")
+    ),
+    Sex = factor(
+      Sex,
+      levels = c(0, 1),
+      labels = c("Female", "Male")
+    ),
+    GenHlth = factor(
+      GenHlth,
+      levels = 1:5,
+      labels = c("Excellent", "Very_good", "Good", "Fair", "Poor"),
+      ordered = TRUE
+    ),
+    Age_num = Age,
+    Age = factor(
+      Age,
+      levels = 1:13,
+      labels = age_labels,
+      ordered = TRUE
+    )
+  )
+
+diabetes |&gt; 
+  count(Diabetes_binary) |&gt; 
+  mutate(prop = n / sum(n))</code></pre>
+<p><em>The binary outcome is imbalanced, with the “Diabetes” class representing a smaller proportion of observations. This will influence how we interpret log-loss and other metrics.</em></p>
+<hr>
+</section>
+<section id="traintest-split" class="level2">
+<h2 class="anchored" data-anchor-id="traintest-split">Train/Test Split</h2>
+<p>We now split the data into a training set (70%) and a test set (30%), stratifying on the binary outcome to preserve class proportions in each partition.</p>
+<pre class="{r}"><code>#| label: split-data
+#| message: false
+
+set.seed(2025)
+
+data_split &lt;- initial_split(
+  diabetes,
+  prop   = 0.7,
+  strata = Diabetes_binary
+)
+
+data_train &lt;- training(data_split)
+data_test  &lt;- testing(data_split)
+
+data_split</code></pre>
+<hr>
+</section>
+<section id="modeling-strategy-and-predictors" class="level2">
+<h2 class="anchored" data-anchor-id="modeling-strategy-and-predictors">Modeling Strategy and Predictors</h2>
+<p>Guided by the EDA, we choose a set of predictors that showed meaningful associations with diabetes status:</p>
+<ul>
+<li><code>HighBP</code>, <code>HighChol</code>, <code>BMI</code>, <code>Smoker</code><br>
+</li>
+<li><code>PhysActivity</code>, <code>GenHlth</code>, <code>DiffWalk</code><br>
+</li>
+<li><code>Age</code>, <code>Sex</code>, <code>Income</code></li>
+</ul>
+<p>We build a <strong>recipe</strong> that:</p>
+<ul>
+<li>Specifies the outcome and predictors.</li>
+<li>Handles missing values for numeric predictors via median imputation.</li>
+<li>Handles missing values for nominal predictors via mode imputation.</li>
+<li>Creates dummy variables for nominal predictors.</li>
+</ul>
+<pre class="{r}"><code>#| label: recipe
+#| message: false
+
+diabetes_rec &lt;- recipe(
+  Diabetes_binary ~ HighBP + HighChol + BMI + Smoker +
+    PhysActivity + GenHlth + DiffWalk +
+    Age + Sex + Income,
+  data = data_train
+) |&gt;
+  step_impute_median(all_numeric_predictors()) |&gt;
+  step_impute_mode(all_nominal_predictors()) |&gt;
+  step_dummy(all_nominal_predictors())
+
+diabetes_rec</code></pre>
+<p>We also set up 5-fold cross-validation on the training data, stratifying by the outcome, and define a metric set centered on <strong>log-loss</strong> (here named <code>mn_log_loss</code> in this version of yardstick), with accuracy and ROC AUC for additional context.</p>
+<pre class="{r}"><code>#| label: resamples-and-metrics
+#| message: false
+
+set.seed(2025)
+folds &lt;- vfold_cv(
+  data_train,
+  v      = 5,
+  strata = Diabetes_binary
+)
+
+logloss_metrics &lt;- metric_set(mn_log_loss, accuracy, roc_auc)
+
+folds</code></pre>
+<hr>
+</section>
+<section id="classification-tree" class="level2">
+<h2 class="anchored" data-anchor-id="classification-tree">Classification Tree</h2>
+<section id="model-specification" class="level3">
+<h3 class="anchored" data-anchor-id="model-specification">Model Specification</h3>
+<p>We begin with a <strong>classification tree</strong> model. The key tuning parameters are:</p>
+<ul>
+<li><code>cost_complexity</code>: controls pruning / tree complexity<br>
+</li>
+<li><code>tree_depth</code>: maximum depth of the tree<br>
+</li>
+<li><code>min_n</code>: minimum number of observations in a terminal node</li>
+</ul>
+<pre class="{r}"><code>#| label: tree-spec
+#| message: false
+
+tree_spec &lt;- decision_tree(
+  cost_complexity = tune(),
+  tree_depth      = tune(),
+  min_n           = tune()
+) |&gt;
+  set_engine("rpart") |&gt;
+  set_mode("classification")
+
+tree_spec</code></pre>
+</section>
+<section id="tuning-grid" class="level3">
+<h3 class="anchored" data-anchor-id="tuning-grid">Tuning Grid</h3>
+<p>We create a regular grid of hyperparameters to explore a range of tree sizes and complexities.</p>
+<pre class="{r}"><code>#| label: tree-grid
+#| message: false
+
+tree_grid &lt;- grid_regular(
+  cost_complexity(range = c(-4, -1)),
+  tree_depth(range      = c(3, 10)),
+  min_n(range           = c(10, 50)),
+  levels = 3
+)
+
+tree_grid</code></pre>
+</section>
+<section id="workflow-and-cross-validation" class="level3">
+<h3 class="anchored" data-anchor-id="workflow-and-cross-validation">Workflow and Cross-Validation</h3>
+<p>We combine the recipe and model into a workflow and use 5-fold cross-validation to estimate performance across the grid, focusing on log-loss.</p>
+<pre class="{r}"><code>#| label: tree-tuning
+#| message: false
+#| warning: false
+
+tree_wf &lt;- workflow() |&gt;
+  add_recipe(diabetes_rec) |&gt;
+  add_model(tree_spec)
+
+set.seed(2025)
+tree_res &lt;- tune_grid(
+  tree_wf,
+  resamples = folds,
+  grid      = tree_grid,
+  metrics   = logloss_metrics
+)
+
+tree_res</code></pre>
+<p>We examine the best-performing tree configurations according to <strong>mn_log_loss</strong> (lower is better).</p>
+<pre class="{r}"><code>#| label: tree-best
+#| message: false
+
+show_best(tree_res, metric = "mn_log_loss", n = 10)</code></pre>
+<p>We now select the single best set of hyperparameters and finalize the tree workflow.</p>
+<pre class="{r}"><code>#| label: tree-finalize
+#| message: false
+
+best_tree &lt;- select_best(tree_res, metric = "mn_log_loss")
+
+best_tree
+
+final_tree_wf &lt;- finalize_workflow(tree_wf, best_tree)
+
+final_tree_wf</code></pre>
+</section>
+<section id="fit-final-tree-and-evaluate-on-the-test-set" class="level3">
+<h3 class="anchored" data-anchor-id="fit-final-tree-and-evaluate-on-the-test-set">Fit Final Tree and Evaluate on the Test Set</h3>
+<p>We fit the finalized tree model on the full training data and evaluate its performance on the held-out test set.</p>
+<pre class="{r}"><code>#| label: tree-fit-test
+#| message: false
+#| warning: false
+
+final_tree_fit &lt;- final_tree_wf |&gt;
+  fit(data = data_train)
+
+tree_probs &lt;- predict(final_tree_fit, data_test, type = "prob") |&gt;
+  bind_cols(data_test |&gt; select(Diabetes_binary))
+
+tree_classes &lt;- predict(final_tree_fit, data_test, type = "class") |&gt;
+  bind_cols(data_test |&gt; select(Diabetes_binary))
+
+# --- metrics computed with correct prediction types ---
+
+# log-loss uses probabilities
+tree_logloss &lt;- mn_log_loss(
+  tree_probs,
+  truth   = Diabetes_binary,
+  .pred_Diabetes
+)
+
+# accuracy uses class predictions
+tree_accuracy &lt;- accuracy(
+  tree_classes,
+  truth   = Diabetes_binary,
+  .pred_class
+)
+
+# ROC AUC uses probabilities
+tree_roc &lt;- roc_auc(
+  tree_probs,
+  truth   = Diabetes_binary,
+  .pred_Diabetes
+)
+
+tree_metrics &lt;- bind_rows(tree_logloss, tree_accuracy, tree_roc)
+
+tree_cm &lt;- conf_mat(
+  tree_classes,
+  truth   = Diabetes_binary,
+  estimate = .pred_class
+)
+
+tree_metrics
+</code></pre>
+<pre class="{r}"><code>#| label: tree-conf-matrix
+#| message: false
+
+tree_cm</code></pre>
+<hr>
+</section>
+</section>
+<section id="random-forest" class="level2">
+<h2 class="anchored" data-anchor-id="random-forest">Random Forest</h2>
+<section id="model-specification-1" class="level3">
+<h3 class="anchored" data-anchor-id="model-specification-1">Model Specification</h3>
+<p>We now consider a <strong>random forest</strong> model, which fits an ensemble of decision trees and averages their predictions. The main tuning parameters are:</p>
+<ul>
+<li><code>mtry</code>: number of predictors sampled at each split<br>
+</li>
+<li><code>min_n</code>: minimum number of observations in a terminal node<br>
+</li>
+<li><code>trees</code>: total number of trees in the forest</li>
+</ul>
+<p>we were using 1000 trees but reduced to 10 because of the computational time</p>
+<pre class="{r}"><code>#| label: rf-spec
+#| message: false
+
+rf_spec &lt;- rand_forest(
+  mtry  = tune(),
+  min_n = tune(),
+  trees = 10
+) |&gt;
+  set_engine("ranger", importance = "impurity") |&gt;
+  set_mode("classification")
+
+rf_spec</code></pre>
+</section>
+<section id="tuning-grid-1" class="level3">
+<h3 class="anchored" data-anchor-id="tuning-grid-1">Tuning Grid</h3>
+<p>We set up a grid for <code>mtry</code> and <code>min_n</code>. Because the number of predictors after dummy encoding is not known ahead of time, we estimate a reasonable range for <code>mtry</code> based on the training data.</p>
+<pre class="{r}"><code>#| label: rf-grid
+#| message: false
+
+# approximate number of predictors after dummying
+prep_rec &lt;- diabetes_rec |&gt;
+  prep(training = data_train)
+
+train_processed &lt;- bake(prep_rec, new_data = data_train)
+
+n_pred &lt;- ncol(train_processed) - 1  # subtract outcome
+
+n_pred
+
+rf_grid &lt;- grid_regular(
+  mtry(range = c(2, min(10, n_pred))),
+  min_n(range = c(5, 25)),
+  levels = 4
+)
+
+rf_grid</code></pre>
+</section>
+<section id="workflow-and-cross-validation-1" class="level3">
+<h3 class="anchored" data-anchor-id="workflow-and-cross-validation-1">Workflow and Cross-Validation</h3>
+<p>We create a workflow for the random forest model and tune it using the same 5-fold cross-validation folds and log-loss metric.</p>
+<pre class="{r}"><code>#| label: rf-tuning
+#| message: false
+#| warning: false
+
+rf_wf &lt;- workflow() |&gt;
+  add_recipe(diabetes_rec) |&gt;
+  add_model(rf_spec)
+
+set.seed(2025)
+rf_res &lt;- tune_grid(
+  rf_wf,
+  resamples = folds,
+  grid      = rf_grid,
+  metrics   = logloss_metrics
+)
+
+rf_res</code></pre>
+<p>We examine the best-performing random forest configurations.</p>
+<pre class="{r}"><code>#| label: rf-best
+#| message: false
+
+show_best(rf_res, metric = "mn_log_loss", n = 10)</code></pre>
+<p>We then select the best tuning parameters and finalize the workflow.</p>
+<pre class="{r}"><code>#| label: rf-finalize
+#| message: false
+
+best_rf &lt;- select_best(rf_res, metric = "mn_log_loss")
+
+best_rf
+
+final_rf_wf &lt;- finalize_workflow(rf_wf, best_rf)
+
+final_rf_wf</code></pre>
+</section>
+<section id="fit-final-random-forest-and-evaluate-on-the-test-set" class="level3">
+<h3 class="anchored" data-anchor-id="fit-final-random-forest-and-evaluate-on-the-test-set">Fit Final Random Forest and Evaluate on the Test Set</h3>
+<p>We fit the finalized random forest on the full training data and evaluate it on the test set.</p>
+<pre class="{r}"><code>#| label: rf-fit-test
+#| message: false
+#| warning: false
+
+final_rf_fit &lt;- final_rf_wf |&gt;
+  fit(data = data_train)
+
+rf_probs &lt;- predict(final_rf_fit, data_test, type = "prob") |&gt;
+  bind_cols(data_test |&gt; select(Diabetes_binary))
+
+rf_classes &lt;- predict(final_rf_fit, data_test, type = "class") |&gt;
+  bind_cols(data_test |&gt; select(Diabetes_binary))
+
+# --- metrics with correct prediction types ---
+
+# log-loss uses probabilities
+rf_logloss &lt;- mn_log_loss(
+  rf_probs,
+  truth   = Diabetes_binary,
+  .pred_Diabetes
+)
+
+# accuracy uses class predictions
+rf_accuracy &lt;- accuracy(
+  rf_classes,
+  truth   = Diabetes_binary,
+  .pred_class
+)
+
+# ROC AUC uses probabilities
+rf_roc &lt;- roc_auc(
+  rf_probs,
+  truth   = Diabetes_binary,
+  .pred_Diabetes
+)
+
+rf_metrics &lt;- bind_rows(rf_logloss, rf_accuracy, rf_roc)
+
+rf_cm &lt;- conf_mat(
+  rf_classes,
+  truth    = Diabetes_binary,
+  estimate = .pred_class
+)
+
+rf_metrics
+</code></pre>
+<pre class="{r}"><code>#| label: rf-conf-matrix
+#| message: false
+
+rf_cm</code></pre>
+<hr>
+</section>
+</section>
+<section id="final-model-comparison" class="level2">
+<h2 class="anchored" data-anchor-id="final-model-comparison">Final Model Comparison</h2>
+<p>We now compare the <strong>test set performance</strong> of the tuned classification tree and random forest models. Our primary metric is <strong>log-loss</strong> (reported here as <code>mn_log_loss</code>, lower is better), but we also consider accuracy and ROC AUC.</p>
+<pre class="{r}"><code>#| label: compare-models
+#| message: false
+
+tree_summary &lt;- tree_metrics |&gt;
+  mutate(model = "Classification tree")
+
+rf_summary &lt;- rf_metrics |&gt;
+  mutate(model = "Random forest")
+
+bind_rows(tree_summary, rf_summary) |&gt;
+  select(model, .metric, .estimate) |&gt;
+  arrange(.metric, desc(.estimate))</code></pre>
+<p><em>Typically we expect the random forest to outperform a single tree on log-loss and ROC AUC due to its ensemble nature and better ability to capture complex interactions.reducing the tree parameters for 10 caused the random forest to be slightly worse than the classification tree, so likely this will be our champion model.</em></p>
+<hr>
+</section>
+<section id="conclusion" class="level2">
+<h2 class="anchored" data-anchor-id="conclusion">Conclusion</h2>
+<p>In this modeling analysis we:</p>
+<ul>
+<li>Created a binary diabetes outcome from the original three-level <code>Diabetes_012</code> variable.</li>
+<li>Split the data into stratified training and test sets.</li>
+<li>Built a preprocessing recipe that handles missing values and encodes categorical predictors.</li>
+<li>Tuned a classification tree model using 5-fold cross-validation and log-loss.</li>
+<li>Tuned a random forest model using the same resampling scheme and metrics.</li>
+<li>Compared the tuned tree and random forest on the test set.</li>
+</ul>
+<p>Based on the test set results, we select the model with the <strong>lowest log-loss</strong> (and typically higher ROC AUC) as our final model. This chosen model will be refit on the full dataset and exposed via a <strong>plumber API</strong> in the next stage of the project.</p>
 
 
+</section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
