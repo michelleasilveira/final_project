@@ -553,3 +553,23 @@ In this modeling analysis we:
 -   Compared the tuned tree and random forest on the test set.
 
 Based on the test set results, we select the model with the **lowest log-loss** (and typically higher ROC AUC) as our final model. This chosen model will be refit on the full dataset and exposed via a **plumber API** in the next stage of the project.
+
+## Saving champion model 
+
+
+```{r}
+#| label: save-final-model
+#| message: false
+
+# Make sure the 'model' directory exists
+if (!dir.exists("model")) dir.create("model")
+
+# Print champion model (optional)
+final_tree_fit
+
+# Save final fitted tree workflow and the recipe
+saveRDS(final_tree_fit, "model/final_tree_fit.rds")
+saveRDS(diabetes_rec, "model/recipe.rds")
+
+
+```
