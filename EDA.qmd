@@ -1,34 +1,499 @@
 ---
-title: "Michelle Silveira - Diabetes Health Indicators – EDA"
+title: "Diabetes Health Indicators – Exploratory Data Analysis"
+author: "Michelle A Silveira"
 format:
   html:
     toc: true
+    toc-location: left
     theme: cosmo
 editor: visual
 ---
 
 ## Introduction
 
-In this report we explore the **Diabetes Health Indicators** dataset
-(`diabetes_binary_health_indicators_BRFSS2015`). Our goal is to understand
-which health and lifestyle variables are most associated with an indicator
-for diabetes, and to prepare for building a predictive model.
+The data analyzed in this report come from the **Diabetes Health Indicators** dataset\
+(`diabetes_binary_health_indicators_BRFSS2015`). Each row corresponds to a survey respondent and includes a diabetes status indicator (`Diabetes_012`), along with a variety of health and lifestyle indicators such as blood pressure, BMI, physical activity, smoking status, general health, and socio-demographic variables.
+
+In this version of the dataset, the variable:
+
+-   `Diabetes_012` is coded as:
+    -   `0` = no diabetes
+    -   `1` = prediabetes
+    -   `2` = diabetes
+
+Our goals in this EDA are to:
+
+-   Describe the variables that will be used in the subsequent modeling.
+-   Understand the distribution of the **response** variable (`Diabetes_012`).
+-   Explore how key predictors relate to diabetes status.
+-   Identify potential data quality issues (missing values, unusual distributions).
+-   Build intuition that will guide model selection in the Modeling document.
+
+The **ultimate goal** is to build a predictive model related to diabetes status, which will be developed in the modeling page/report.
+
+------------------------------------------------------------------------
+
+## Load Packages
+
+We begin by loading the R packages that will be used throughout the analysis.
 
 ```{r}
-#| label: setup
+#| label: setup-packages
 #| message: false
 #| warning: false
 
 library(tidyverse)
-library(janitor)
 library(lubridate)
+library(janitor)
 library(skimr)
+library(GGally)
 
-data_raw <- readr::read_csv(
+theme_set(theme_minimal())
+```
+
+------------------------------------------------------------------------
+
+## Read and Prepare the Data
+
+Next, we read the dataset from the `data/` folder and perform some initial cleaning steps (I know from Kaggle this is the cleaned sample). We keep a numeric version of the diabetes indicator for correlations, create a factor version for plots/modeling, recode `Sex` as a labeled factor, and provide more interpretable labels for `GenHlth` and `Age`.
+
+```{r}
+#| label: read-and-clean
+#| message: false
+#| warning: false
+
+diabetes_raw <- readr::read_csv(
   "data/diabetes_binary_health_indicators_BRFSS2015.csv"
 )
 
-diabetes <- data_raw |>
-  clean_names()
+age_labels <- c(
+  "18–24", "25–29", "30–34", "35–39",
+  "40–44", "45–49", "50–54", "55–59",
+  "60–64", "65–69", "70–74", "75–79", "80+"
+)
+
+diabetes <- diabetes_raw |>
+  mutate(
+    # numeric copy of the diabetes indicator
+    Diabetes_num = Diabetes_012,
+    # factor version for classification / plots
+    Diabetes_012 = factor(
+      Diabetes_012,
+      levels = c(0, 1, 2),
+      labels = c("No_diabetes", "Prediabetes", "Diabetes")
+    ),
+    Sex = factor(
+      Sex,
+      levels = c(0, 1),
+      labels = c("Female", "Male")
+    ),
+    GenHlth = factor(
+      GenHlth,
+      levels = 1:5,
+      labels = c("Excellent", "Very_good", "Good", "Fair", "Poor"),
+      ordered = TRUE
+    ),
+    Age_num = Age,
+    Age = factor(
+      Age,
+      levels = 1:13,
+      labels = age_labels,
+      ordered = TRUE
+    )
+  )
+
+diabetes
+```
+
+------------------------------------------------------------------------
+
+## Basic Data Overview
+
+We first report the number of observations and variables in the cleaned dataset.
+
+```{r}
+#| label: basic-overview
+#| message: false
+
+n_obs  <- nrow(diabetes)
+n_vars <- ncol(diabetes)
+
+tibble(
+  n_observations = n_obs,
+  n_variables    = n_vars
+)
+```
+
+We then use `skimr::skim()` to obtain a high-level summary of the distributions and types of all variables.
+
+```{r}
+#| label: skim-summary
+#| message: false
 
 skimr::skim(diabetes)
+```
+
+------------------------------------------------------------------------
+
+## Variables of Interest
+
+For this project, we focus on a subset of predictors that are both interpretable and likely to be informative for predicting diabetes status. Here we select these variables and inspect their structure.
+
+```{r}
+#| label: select-vars
+#| message: false
+
+vars_of_interest <- diabetes |>
+  select(
+    Diabetes_012,
+    HighBP, HighChol, CholCheck, BMI, Smoker, Stroke,
+    HeartDiseaseorAttack, PhysActivity, Fruits, Veggies,
+    HvyAlcoholConsump, AnyHealthcare, NoDocbcCost,
+    GenHlth, MentHlth, PhysHlth, DiffWalk,
+    Sex, Age, Age_num, Education, Income,
+    Diabetes_num
+  )
+
+glimpse(vars_of_interest)
+```
+
+------------------------------------------------------------------------
+
+## Missing Data
+
+Before proceeding with the analysis, we investigate the extent of missing data for each selected variable. First, we summarize the number and proportion of missing values by variable.
+
+```{r}
+#| label: missingness-summary
+#| message: false
+
+missing_summary <- vars_of_interest |>
+  select(-Diabetes_num, -Age_num) |>
+  summarise(across(everything(), ~ sum(is.na(.)))) |>
+  pivot_longer(everything(),
+               names_to = "variable",
+               values_to = "n_missing") |>
+  mutate(prop_missing = n_missing / n_obs)
+
+missing_summary |>
+  arrange(desc(n_missing)) |> 
+  head(10)
+```
+
+We then visualize the proportion of missing values among variables that have at least one missing observation. If there are no missing values, we simply print a message indicating that the data are complete.
+
+```{r}
+#| label: missing-plot
+#| fig.height: 4
+#| fig.width: 8
+
+if (any(missing_summary$n_missing > 0)) {
+  missing_summary |>
+    filter(n_missing > 0) |>
+    ggplot(aes(x = reorder(variable, prop_missing),
+               y = prop_missing)) +
+    geom_col() +
+    coord_flip() +
+    scale_y_continuous(labels = scales::percent_format()) +
+    labs(
+      x = NULL,
+      y = "Proportion Missing",
+      title = "Proportion of Missing Values by Variable"
+    )
+} else {
+  tibble(msg = "No missing values were found in the selected variables.") |>
+    knitr::kable()
+}
+```
+
+*This is the cleaned dataset explained in the Kaggle, so I was not expecting any missing value.*
+
+------------------------------------------------------------------------
+
+## Distribution of the Response: `Diabetes_012`
+
+We next examine the distribution of the diabetes status indicator to understand class balance across the three categories.
+
+```{r}
+#| label: response-dist-table
+#| message: false
+
+resp_counts <- vars_of_interest |>
+  count(Diabetes_012) |>
+  mutate(prop = n / sum(n))
+
+resp_counts
+```
+
+We visualize these proportions with a bar plot.
+
+```{r}
+#| label: response-barplot
+#| fig.height: 4
+#| fig.width: 6
+
+resp_counts |>
+  ggplot(aes(x = Diabetes_012, y = prop, fill = Diabetes_012)) +
+  geom_col(show.legend = FALSE) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    x = "Diabetes Status",
+    y = "Proportion of Respondents",
+    title = "Prevalence of Diabetes Status in the Sample"
+  )
+```
+
+*The dataset is imbalanced, with a smaller proportion of respondents labeled as diabetes compared to those without diabetes. Prediabetes appears as an intermediate category. This imbalance will be important to considerwhen evaluating models. This was mentioned in the Kaggle website*
+
+------------------------------------------------------------------------
+
+## Univariate Distributions of Key Numeric Predictors
+
+We begin by studying the distributions of some important numeric variables: BMI, days of poor mental health, and days of poor physical health.
+
+```{r}
+#| label: numeric-distributions
+#| fig.height: 4
+#| fig.width: 8
+
+vars_of_interest |>
+  select(BMI, MentHlth, PhysHlth) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "value") |>
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 30) +
+  facet_wrap(~ variable, scales = "free_x") +
+  labs(
+    x = NULL,
+    y = "Count",
+    title = "Distributions of Selected Numeric Predictors"
+  )
+```
+
+*BMI usually right-skewed, with most values in the 20–40 range. Mental and physical health days are often concentrated at 0, with a long right tail for respondents reporting many days of poor health.*
+
+------------------------------------------------------------------------
+
+## Univariate Distributions of Key Binary/Categorical Predictors
+
+Many predictors in this dataset are Dummy or 0/1 indicators. Here I examine the marginal distributions for a few key binary variables, followed by a separate summary of the sex variable.
+
+```{r}
+#| label: categorical-marginals
+#| fig.height: 5
+#| fig.width: 8
+
+cat_vars <- vars_of_interest |>
+  select(HighBP, HighChol, Smoker, PhysActivity,
+         Fruits, Veggies, DiffWalk)
+
+cat_vars |>
+  pivot_longer(everything(),
+               names_to = "variable",
+               values_to = "value") |>
+  mutate(value = factor(value)) |>
+  group_by(variable, value) |>
+  summarise(n = n(), .groups = "drop") |>
+  group_by(variable) |>
+  mutate(prop = n / sum(n)) |>
+  ggplot(aes(x = value, y = prop, fill = value)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ variable, scales = "free_x") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    x = NULL,
+    y = "Proportion",
+    title = "Distributions of Selected Binary Predictors"
+  )
+```
+
+```{r}
+#| label: sex-marginal
+#| fig.height: 4
+#| fig.width: 6
+
+vars_of_interest |>
+  count(Sex) |>
+  mutate(prop = n / sum(n)) |>
+  ggplot(aes(x = Sex, y = prop, fill = Sex)) +
+  geom_col(show.legend = FALSE) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    x = "Sex",
+    y = "Proportion",
+    title = "Distribution of Sex"
+  )
+```
+
+*These plots show the prevalence of high blood pressure, high cholesterol, smoking, physical activity, difficulty walking, and sex in the sample.*
+
+------------------------------------------------------------------------
+
+## Numeric Predictors vs. Diabetes Status
+
+We now turn to bivariate relationships. First, we compare BMI, mental health days, and physical health days across diabetes status groups using boxplots.
+
+```{r}
+#| label: numeric-vs-diabetes
+#| fig.height: 4
+#| fig.width: 10
+
+vars_of_interest |>
+  select(Diabetes_012, BMI, MentHlth, PhysHlth) |>
+  pivot_longer(cols = c(BMI, MentHlth, PhysHlth),
+               names_to = "variable",
+               values_to = "value") |>
+  ggplot(aes(x = Diabetes_012, y = value, fill = Diabetes_012)) +
+  geom_boxplot(outlier.alpha = 0.2, show.legend = FALSE) +
+  facet_wrap(~ variable, scales = "free_y") +
+  labs(
+    x = "Diabetes Status",
+    y = NULL,
+    title = "Numeric Predictors by Diabetes Status"
+  )
+```
+
+*Respondents with diabetes tend to have higher BMI and more days of poor physical health. Differences in mental health days may also be present but could be less pronounced.*
+
+------------------------------------------------------------------------
+
+## Binary Predictors vs. Diabetes Status
+
+For binary predictors, we compare the proportion of “1” (Yes) within each diabetes group.
+
+```{r}
+#| label: binary-vs-diabetes
+#| fig.height: 5
+#| fig.width: 9
+
+binary_vars <- vars_of_interest |>
+  select(Diabetes_012,
+         HighBP, HighChol, Smoker, PhysActivity,
+         Fruits, Veggies, DiffWalk)
+
+binary_long <- binary_vars |>
+  pivot_longer(
+    cols = -Diabetes_012,
+    names_to = "variable",
+    values_to = "value"
+  ) |>
+  mutate(value = factor(value))
+
+binary_long |>
+  group_by(Diabetes_012, variable) |>
+  summarise(prop_yes = mean(value == "1"), .groups = "drop") |>
+  ggplot(aes(x = variable, y = prop_yes,
+             fill = Diabetes_012)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    x = NULL,
+    y = "Proportion with value = 1",
+    fill = "Diabetes status",
+    title = "Proportion of 'Yes' for Binary Predictors by Diabetes Status"
+  )
+```
+
+*Individuals with diabetes are more likely to report high blood pressure, high cholesterol, difficulty walking, and lower levels of physical activity. These patterns support the inclusion of these predictors in our models.*
+
+------------------------------------------------------------------------
+
+## Ordinal Predictors vs. Diabetes Status
+
+We now investigate how self-reported general health (`GenHlth`), age category, education, and income differ by diabetes status.
+
+```{r}
+#| label: ordinal-vs-diabetes
+#| fig.height: 5
+#| fig.width: 9
+
+ordinal_vars <- vars_of_interest |>
+  select(Diabetes_012, GenHlth, Age, Education, Income) |>
+  # make all ordinal predictors character so pivot_longer is happy
+  mutate(across(c(GenHlth, Age, Education, Income), as.character))
+
+ordinal_long <- ordinal_vars |>
+  pivot_longer(
+    cols = -Diabetes_012,
+    names_to = "variable",
+    values_to = "value"
+  )
+
+ordinal_long |>
+  group_by(Diabetes_012, variable, value) |>
+  summarise(n = n(), .groups = "drop") |>
+  group_by(Diabetes_012, variable) |>
+  mutate(prop = n / sum(n)) |>
+  ggplot(aes(x = value, y = prop,
+             fill = Diabetes_012)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ variable, scales = "free_x") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    x = "Category",
+    y = "Proportion",
+    fill = "Diabetes status",
+    title = "Ordinal Predictors by Diabetes Status"
+  )
+
+```
+
+*Diabetes tends to be more prevalent in older age categories, among respondents with worse self-reported general health, and potentially among those with lower income and education levels. These patterns suggest that demographic and socio-economic variables may add predictive power.*
+
+------------------------------------------------------------------------
+
+## Correlation Among Numeric Predictors
+
+Finally, we examine the correlation structure among numeric predictors and the diabetes indicator (using the numeric version `Diabetes_num` and `Age_num`).
+
+```{r}
+#| label: correlations-table
+#| message: false
+#| warning: false
+#| fig.height: 5
+#| fig.width: 7
+
+numeric_for_cor <- vars_of_interest |>
+  select(Diabetes_num, BMI, MentHlth, PhysHlth, Age_num, Education, Income)
+
+cor_mat <- cor(numeric_for_cor, use = "pairwise.complete.obs")
+
+round(cor_mat, 2)
+```
+
+We also visualize this correlation matrix using `GGally::ggcorr()`.
+
+```{r}
+#| label: corr-plot
+#| message: false
+#| warning: false
+#| fig.height: 5
+#| fig.width: 7
+
+ggcorr(
+  numeric_for_cor,
+  label = TRUE,
+  label_round = 2,
+  label_size = 3
+) +
+  labs(
+    title = "Correlation Matrix for Selected Numeric Predictors"
+  )
+```
+
+*The correlation matrix highlights the relationships among BMI, age, health days, and diabetes status. While no single predictor is perfectly correlated with diabetes, several variables show moderate associations that justify their inclusion in the modeling step.*
+
+------------------------------------------------------------------------
+
+## Summary and Next Steps
+
+In this EDA, we:
+
+-   Described the structure of the Diabetes Health Indicators dataset.
+-   Explored the marginal distribution of the multi-level diabetes indicator (`Diabetes_012`).
+-   Examined key numeric, binary, and ordinal predictors and their relationships with diabetes status.
+-   Identified variables that appear strongly associated with diabetes, including high blood pressure, high cholesterol, BMI, physical activity, difficulty walking, and general health, as well as age and income.
+
+These insights will guide the construction of predictive models in the next stage, where we will fit and compare a **classification tree** and a **random forest** using the tidymodels framework, with model performance evaluated via **log-loss** on a held-out test set.
+
+[Click here for the Modeling Page](Modeling.html)

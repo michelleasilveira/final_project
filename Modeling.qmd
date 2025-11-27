@@ -1,5 +1,569 @@
 ---
-title: "Modeling"
-format: html
+title: "Diabetes Health Indicators – Modeling"
+author: "Michelle A Silveira"
+format:
+  html:
+    toc: true
+    toc-location: left
+    theme: cosmo
+editor: visual
 ---
+
+## Introduction
+
+In this report we build and compare predictive models for diabetes using the
+**Diabetes Health Indicators** dataset
+(`diabetes_binary_health_indicators_BRFSS2015`). The original outcome
+variable, `Diabetes_012`, has three categories:
+
+- `0` = no diabetes  
+- `1` = prediabetes  
+- `2` = diabetes  
+
+For this project we follow the course instructions and work with a **binary**
+response. We define a new variable, `Diabetes_binary`, that indicates whether
+a respondent has diabetes (`1`) or not (`0`):
+
+- `Diabetes_binary = 1` if `Diabetes_012 == 2` (diabetes)  
+- `Diabetes_binary = 0` otherwise (no diabetes or prediabetes)
+
+Our goals in this document are to:
+
+- Create a training/test split of the data.
+- Specify a modeling recipe based on insights from the EDA.
+- Fit and tune a **classification tree** model.
+- Fit and tune a **random forest** model.
+- Use **log-loss** with 5-fold cross-validation to select the best model in
+  each family.
+- Compare the final tuned models on the test set and select a winner.
+
+We use the **tidymodels** framework to keep preprocessing, resampling,
+tuning, and evaluation organized and reproducible.
+
+---
+
+## Load Packages
+
+We begin by loading the packages needed for modeling.
+
+```{r}
+#| label: setup-packages
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(lubridate)
+library(janitor)
+library(tidymodels)
+
+tidymodels_prefer()
+theme_set(theme_minimal())
+```
+
+---
+
+## Read and Prepare the Data
+
+Here we read the same dataset used in the EDA and perform minimal cleaning so
+that the modeling file is self-contained. We:
+
+- Keep a numeric copy of `Diabetes_012`.
+- Create a **binary** outcome `Diabetes_binary` (No_diabetes vs Diabetes).
+- Recode `Sex` as a factor with labels.
+- Provide interpretable labels for `GenHlth` and `Age`.
+
+```{r}
+#| label: read-and-clean
+#| message: false
+#| warning: false
+
+diabetes_raw <- readr::read_csv(
+  "data/diabetes_binary_health_indicators_BRFSS2015.csv"
+)
+
+age_labels <- c(
+  "18–24", "25–29", "30–34", "35–39",
+  "40–44", "45–49", "50–54", "55–59",
+  "60–64", "65–69", "70–74", "75–79", "80+"
+)
+
+diabetes <- diabetes_raw |>
+  mutate(
+    Diabetes_num = Diabetes_012,
+    Diabetes_012 = factor(
+      Diabetes_012,
+      levels = c(0, 1, 2),
+      labels = c("No_diabetes", "Prediabetes", "Diabetes")
+    ),
+    # Binary response for modeling
+    Diabetes_binary = if_else(Diabetes_012 == "Diabetes", 1, 0),
+    Diabetes_binary = factor(
+      Diabetes_binary,
+      levels = c(0, 1),
+      labels = c("No_diabetes", "Diabetes")
+    ),
+    Sex = factor(
+      Sex,
+      levels = c(0, 1),
+      labels = c("Female", "Male")
+    ),
+    GenHlth = factor(
+      GenHlth,
+      levels = 1:5,
+      labels = c("Excellent", "Very_good", "Good", "Fair", "Poor"),
+      ordered = TRUE
+    ),
+    Age_num = Age,
+    Age = factor(
+      Age,
+      levels = 1:13,
+      labels = age_labels,
+      ordered = TRUE
+    )
+  )
+
+diabetes |> 
+  count(Diabetes_binary) |> 
+  mutate(prop = n / sum(n))
+```
+
+*The binary outcome is imbalanced, with the “Diabetes” class representing a
+smaller proportion of observations. This will influence how we interpret
+log-loss and other metrics.*
+
+---
+
+## Train/Test Split
+
+We now split the data into a training set (70%) and a test set (30%),
+stratifying on the binary outcome to preserve class proportions in each
+partition.
+
+
+```{r}
+#| label: split-data
+#| message: false
+
+set.seed(2025)
+
+data_split <- initial_split(
+  diabetes,
+  prop   = 0.7,
+  strata = Diabetes_binary
+)
+
+data_train <- training(data_split)
+data_test  <- testing(data_split)
+
+data_split
+```
+
+---
+
+## Modeling Strategy and Predictors
+
+Guided by the EDA, we choose a set of predictors that showed meaningful
+associations with diabetes status:
+
+- `HighBP`, `HighChol`, `BMI`, `Smoker`  
+- `PhysActivity`, `GenHlth`, `DiffWalk`  
+- `Age`, `Sex`, `Income`
+
+We build a **recipe** that:
+
+- Specifies the outcome and predictors.
+- Handles missing values for numeric predictors via median imputation.
+- Handles missing values for nominal predictors via mode imputation.
+- Creates dummy variables for nominal predictors.
+
+```{r}
+#| label: recipe
+#| message: false
+
+diabetes_rec <- recipe(
+  Diabetes_binary ~ HighBP + HighChol + BMI + Smoker +
+    PhysActivity + GenHlth + DiffWalk +
+    Age + Sex + Income,
+  data = data_train
+) |>
+  step_impute_median(all_numeric_predictors()) |>
+  step_impute_mode(all_nominal_predictors()) |>
+  step_dummy(all_nominal_predictors())
+
+diabetes_rec
+```
+
+We also set up 5-fold cross-validation on the training data, stratifying by
+the outcome, and define a metric set centered on **log-loss** (here named
+`mn_log_loss` in this version of yardstick), with accuracy and ROC AUC for
+additional context.
+
+```{r}
+#| label: resamples-and-metrics
+#| message: false
+
+set.seed(2025)
+folds <- vfold_cv(
+  data_train,
+  v      = 5,
+  strata = Diabetes_binary
+)
+
+logloss_metrics <- metric_set(mn_log_loss, accuracy, roc_auc)
+
+folds
+```
+
+---
+
+## Classification Tree
+
+### Model Specification
+
+We begin with a **classification tree** model. The key tuning parameters are:
+
+- `cost_complexity`: controls pruning / tree complexity  
+- `tree_depth`: maximum depth of the tree  
+- `min_n`: minimum number of observations in a terminal node  
+
+```{r}
+#| label: tree-spec
+#| message: false
+
+tree_spec <- decision_tree(
+  cost_complexity = tune(),
+  tree_depth      = tune(),
+  min_n           = tune()
+) |>
+  set_engine("rpart") |>
+  set_mode("classification")
+
+tree_spec
+```
+
+### Tuning Grid
+
+We create a regular grid of hyperparameters to explore a range of tree sizes
+and complexities.
+
+```{r}
+#| label: tree-grid
+#| message: false
+
+tree_grid <- grid_regular(
+  cost_complexity(range = c(-4, -1)),
+  tree_depth(range      = c(3, 10)),
+  min_n(range           = c(10, 50)),
+  levels = 3
+)
+
+tree_grid
+```
+
+### Workflow and Cross-Validation
+
+We combine the recipe and model into a workflow and use 5-fold cross-validation
+to estimate performance across the grid, focusing on log-loss.
+
+```{r}
+#| label: tree-tuning
+#| message: false
+#| warning: false
+
+tree_wf <- workflow() |>
+  add_recipe(diabetes_rec) |>
+  add_model(tree_spec)
+
+set.seed(2025)
+tree_res <- tune_grid(
+  tree_wf,
+  resamples = folds,
+  grid      = tree_grid,
+  metrics   = logloss_metrics
+)
+
+tree_res
+```
+
+We examine the best-performing tree configurations according to **mn_log_loss**
+(lower is better).
+
+```{r}
+#| label: tree-best
+#| message: false
+
+show_best(tree_res, metric = "mn_log_loss", n = 10)
+```
+
+We now select the single best set of hyperparameters and finalize the tree
+workflow.
+
+```{r}
+#| label: tree-finalize
+#| message: false
+
+best_tree <- select_best(tree_res, metric = "mn_log_loss")
+
+best_tree
+
+final_tree_wf <- finalize_workflow(tree_wf, best_tree)
+
+final_tree_wf
+```
+
+### Fit Final Tree and Evaluate on the Test Set
+
+We fit the finalized tree model on the full training data and evaluate its
+performance on the held-out test set.
+
+```{r}
+#| label: tree-fit-test
+#| message: false
+#| warning: false
+
+final_tree_fit <- final_tree_wf |>
+  fit(data = data_train)
+
+tree_probs <- predict(final_tree_fit, data_test, type = "prob") |>
+  bind_cols(data_test |> select(Diabetes_binary))
+
+tree_classes <- predict(final_tree_fit, data_test, type = "class") |>
+  bind_cols(data_test |> select(Diabetes_binary))
+
+# --- metrics computed with correct prediction types ---
+
+# log-loss uses probabilities
+tree_logloss <- mn_log_loss(
+  tree_probs,
+  truth   = Diabetes_binary,
+  .pred_Diabetes
+)
+
+# accuracy uses class predictions
+tree_accuracy <- accuracy(
+  tree_classes,
+  truth   = Diabetes_binary,
+  .pred_class
+)
+
+# ROC AUC uses probabilities
+tree_roc <- roc_auc(
+  tree_probs,
+  truth   = Diabetes_binary,
+  .pred_Diabetes
+)
+
+tree_metrics <- bind_rows(tree_logloss, tree_accuracy, tree_roc)
+
+tree_cm <- conf_mat(
+  tree_classes,
+  truth   = Diabetes_binary,
+  estimate = .pred_class
+)
+
+tree_metrics
+
+```
+
+```{r}
+#| label: tree-conf-matrix
+#| message: false
+
+tree_cm
+```
+
+---
+
+## Random Forest
+
+### Model Specification
+
+We now consider a **random forest** model, which fits an ensemble of decision
+trees and averages their predictions. The main tuning parameters are:
+
+- `mtry`: number of predictors sampled at each split  
+- `min_n`: minimum number of observations in a terminal node  
+- `trees`: total number of trees in the forest  
+
+```{r}
+#| label: rf-spec
+#| message: false
+
+rf_spec <- rand_forest(
+  mtry  = tune(),
+  min_n = tune(),
+  trees = 1000
+) |>
+  set_engine("ranger", importance = "impurity") |>
+  set_mode("classification")
+
+rf_spec
+```
+
+### Tuning Grid
+
+We set up a grid for `mtry` and `min_n`. Because the number of predictors
+after dummy encoding is not known ahead of time, we estimate a reasonable
+range for `mtry` based on the training data.
+
+```{r}
+#| label: rf-grid
+#| message: false
+
+# approximate number of predictors after dummying
+prep_rec <- diabetes_rec |>
+  prep(training = data_train)
+
+train_processed <- bake(prep_rec, new_data = data_train)
+
+n_pred <- ncol(train_processed) - 1  # subtract outcome
+
+n_pred
+
+rf_grid <- grid_regular(
+  mtry(range = c(2, min(10, n_pred))),
+  min_n(range = c(5, 25)),
+  levels = 4
+)
+
+rf_grid
+```
+
+### Workflow and Cross-Validation
+
+We create a workflow for the random forest model and tune it using the same
+5-fold cross-validation folds and log-loss metric.
+
+```{r}
+#| label: rf-tuning
+#| message: false
+#| warning: false
+
+rf_wf <- workflow() |>
+  add_recipe(diabetes_rec) |>
+  add_model(rf_spec)
+
+set.seed(2025)
+rf_res <- tune_grid(
+  rf_wf,
+  resamples = folds,
+  grid      = rf_grid,
+  metrics   = logloss_metrics
+)
+
+rf_res
+```
+
+We examine the best-performing random forest configurations.
+
+```{r}
+#| label: rf-best
+#| message: false
+
+show_best(rf_res, metric = "mn_log_loss", n = 10)
+```
+
+We then select the best tuning parameters and finalize the workflow.
+
+```{r}
+#| label: rf-finalize
+#| message: false
+
+best_rf <- select_best(rf_res, metric = "mn_log_loss")
+
+best_rf
+
+final_rf_wf <- finalize_workflow(rf_wf, best_rf)
+
+final_rf_wf
+```
+
+### Fit Final Random Forest and Evaluate on the Test Set
+
+We fit the finalized random forest on the full training data and evaluate it
+on the test set.
+
+```{r}
+#| label: rf-fit-test
+#| message: false
+#| warning: false
+
+final_rf_fit <- final_rf_wf |>
+  fit(data = data_train)
+
+rf_probs <- predict(final_rf_fit, data_test, type = "prob") |>
+  bind_cols(data_test |> select(Diabetes_binary))
+
+rf_classes <- predict(final_rf_fit, data_test, type = "class") |>
+  bind_cols(data_test |> select(Diabetes_binary))
+
+rf_metrics <- logloss_metrics(
+  rf_probs,
+  truth    = Diabetes_binary,
+  estimate = .pred_Diabetes
+)
+
+rf_cm <- conf_mat(
+  rf_classes,
+  truth    = Diabetes_binary,
+  estimate = .pred_class
+)
+
+rf_metrics
+```
+
+```{r}
+#| label: rf-conf-matrix
+#| message: false
+
+rf_cm
+```
+
+---
+
+## Final Model Comparison
+
+We now compare the **test set performance** of the tuned classification tree
+and random forest models. Our primary metric is **log-loss** (reported here as
+`mn_log_loss`, lower is better), but we also consider accuracy and ROC AUC.
+
+```{r}
+#| label: compare-models
+#| message: false
+
+tree_summary <- tree_metrics |>
+  mutate(model = "Classification tree")
+
+rf_summary <- rf_metrics |>
+  mutate(model = "Random forest")
+
+bind_rows(tree_summary, rf_summary) |>
+  select(model, .metric, .estimate) |>
+  arrange(.metric, desc(.estimate))
+```
+
+*Typically we expect the random forest to outperform a single tree on log-loss
+and ROC AUC due to its ensemble nature and better ability to capture complex
+interactions. If that is the case here, we will choose the random forest as
+our final model for deployment in the API.*
+
+---
+
+## Conclusion
+
+In this modeling analysis we:
+
+- Created a binary diabetes outcome from the original three-level `Diabetes_012`
+  variable.
+- Split the data into stratified training and test sets.
+- Built a preprocessing recipe that handles missing values and encodes
+  categorical predictors.
+- Tuned a classification tree model using 5-fold cross-validation and log-loss.
+- Tuned a random forest model using the same resampling scheme and metrics.
+- Compared the tuned tree and random forest on the test set.
+
+Based on the test set results, we select the model with the **lowest log-loss**
+(and typically higher ROC AUC) as our final model. This chosen model will be
+refit on the full dataset and exposed via a **plumber API** in the next stage
+of the project.
 
