@@ -1,0 +1,34 @@
+---
+title: "Michelle Silveira - Diabetes Health Indicators – EDA"
+format:
+  html:
+    toc: true
+    theme: cosmo
+editor: visual
+---
+
+## Introduction
+
+In this report we explore the **Diabetes Health Indicators** dataset
+(`diabetes_binary_health_indicators_BRFSS2015`). Our goal is to understand
+which health and lifestyle variables are most associated with an indicator
+for diabetes, and to prepare for building a predictive model.
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(skimr)
+
+data_raw <- readr::read_csv(
+  "data/diabetes_binary_health_indicators_BRFSS2015.csv"
+)
+
+diabetes <- data_raw |>
+  clean_names()
+
+skimr::skim(diabetes)
