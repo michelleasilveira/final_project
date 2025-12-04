@@ -50,7 +50,6 @@ library(GGally)
 
 theme_set(theme_minimal())
 ```
-
 ------------------------------------------------------------------------
 
 ## Read and Prepare the Data

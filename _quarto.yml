@@ -2,7 +2,10 @@ project:
   type: website
   output-dir: docs
 
+execute:
+  freeze: auto
+
 format:
   html:
     theme: cosmo
-    toc: true
+    toc: true 

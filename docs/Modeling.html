@@ -21,6 +21,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -103,6 +138,7 @@ ul.task-list li input[type="checkbox"] {
   </ul></li>
   <li><a href="#final-model-comparison" id="toc-final-model-comparison" class="nav-link" data-scroll-target="#final-model-comparison">Final Model Comparison</a></li>
   <li><a href="#conclusion" id="toc-conclusion" class="nav-link" data-scroll-target="#conclusion">Conclusion</a></li>
+  <li><a href="#saving-champion-model" id="toc-saving-champion-model" class="nav-link" data-scroll-target="#saving-champion-model">Saving champion model</a></li>
   </ul>
 </nav>
 </nav>
@@ -169,17 +205,6 @@ ul.task-list li input[type="checkbox"] {
 <section id="load-packages" class="level2">
 <h2 class="anchored" data-anchor-id="load-packages">Load Packages</h2>
 <p>We begin by loading the packages needed for modeling.</p>
-<pre class="{r}"><code>#| label: setup-packages
-#| message: false
-#| warning: false
-
-library(tidyverse)
-library(lubridate)
-library(janitor)
-library(tidymodels)
-
-tidymodels_prefer()
-theme_set(theme_minimal())</code></pre>
 <hr>
 </section>
 <section id="read-and-prepare-the-data" class="level2">
@@ -191,79 +216,87 @@ theme_set(theme_minimal())</code></pre>
 <li>Recode <code>Sex</code> as a factor with labels.</li>
 <li>Provide interpretable labels for <code>GenHlth</code> and <code>Age</code>.</li>
 </ul>
-<pre class="{r}"><code>#| label: read-and-clean
-#| message: false
-#| warning: false
-
-diabetes_raw &lt;- readr::read_csv(
-  "data/diabetes_binary_health_indicators_BRFSS2015.csv"
-)
-
-age_labels &lt;- c(
-  "18–24", "25–29", "30–34", "35–39",
-  "40–44", "45–49", "50–54", "55–59",
-  "60–64", "65–69", "70–74", "75–79", "80+"
-)
-
-diabetes &lt;- diabetes_raw |&gt;
-  mutate(
-    Diabetes_num = Diabetes_012,
-    Diabetes_012 = factor(
-      Diabetes_012,
-      levels = c(0, 1, 2),
-      labels = c("No_diabetes", "Prediabetes", "Diabetes")
-    ),
-    # Binary response for modeling
-    Diabetes_binary = if_else(Diabetes_012 == "Diabetes", 1, 0),
-    Diabetes_binary = factor(
-      Diabetes_binary,
-      levels = c(0, 1),
-      labels = c("No_diabetes", "Diabetes")
-    ),
-    Sex = factor(
-      Sex,
-      levels = c(0, 1),
-      labels = c("Female", "Male")
-    ),
-    GenHlth = factor(
-      GenHlth,
-      levels = 1:5,
-      labels = c("Excellent", "Very_good", "Good", "Fair", "Poor"),
-      ordered = TRUE
-    ),
-    Age_num = Age,
-    Age = factor(
-      Age,
-      levels = 1:13,
-      labels = age_labels,
-      ordered = TRUE
-    )
-  )
-
-diabetes |&gt; 
-  count(Diabetes_binary) |&gt; 
-  mutate(prop = n / sum(n))</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>diabetes_raw <span class="ot">&lt;-</span> readr<span class="sc">::</span><span class="fu">read_csv</span>(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">"data/diabetes_binary_health_indicators_BRFSS2015.csv"</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>age_labels <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  <span class="st">"18–24"</span>, <span class="st">"25–29"</span>, <span class="st">"30–34"</span>, <span class="st">"35–39"</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  <span class="st">"40–44"</span>, <span class="st">"45–49"</span>, <span class="st">"50–54"</span>, <span class="st">"55–59"</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  <span class="st">"60–64"</span>, <span class="st">"65–69"</span>, <span class="st">"70–74"</span>, <span class="st">"75–79"</span>, <span class="st">"80+"</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>diabetes <span class="ot">&lt;-</span> diabetes_raw <span class="sc">|&gt;</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">Diabetes_num =</span> Diabetes_012,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">Diabetes_012 =</span> <span class="fu">factor</span>(</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>      Diabetes_012,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>      <span class="at">levels =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">2</span>),</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"No_diabetes"</span>, <span class="st">"Prediabetes"</span>, <span class="st">"Diabetes"</span>)</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Binary response for modeling</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    <span class="at">Diabetes_binary =</span> <span class="fu">if_else</span>(Diabetes_012 <span class="sc">==</span> <span class="st">"Diabetes"</span>, <span class="dv">1</span>, <span class="dv">0</span>),</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    <span class="at">Diabetes_binary =</span> <span class="fu">factor</span>(</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>      Diabetes_binary,</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>      <span class="at">levels =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>),</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"No_diabetes"</span>, <span class="st">"Diabetes"</span>)</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    <span class="at">Sex =</span> <span class="fu">factor</span>(</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>      Sex,</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>      <span class="at">levels =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>),</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"Female"</span>, <span class="st">"Male"</span>)</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>    <span class="at">GenHlth =</span> <span class="fu">factor</span>(</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>      GenHlth,</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>      <span class="at">levels =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>,</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>      <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"Excellent"</span>, <span class="st">"Very_good"</span>, <span class="st">"Good"</span>, <span class="st">"Fair"</span>, <span class="st">"Poor"</span>),</span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>      <span class="at">ordered =</span> <span class="cn">TRUE</span></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>    <span class="at">Age_num =</span> Age,</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">Age =</span> <span class="fu">factor</span>(</span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>      Age,</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>      <span class="at">levels =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">13</span>,</span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>      <span class="at">labels =</span> age_labels,</span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>      <span class="at">ordered =</span> <span class="cn">TRUE</span></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>diabetes <span class="sc">|&gt;</span> </span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>  <span class="fu">count</span>(Diabetes_binary) <span class="sc">|&gt;</span> </span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">prop =</span> n <span class="sc">/</span> <span class="fu">sum</span>(n))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 2 × 3
+  Diabetes_binary      n  prop
+  &lt;fct&gt;            &lt;int&gt; &lt;dbl&gt;
+1 No_diabetes     218334 0.861
+2 Diabetes         35346 0.139</code></pre>
+</div>
+</div>
 <p><em>The binary outcome is imbalanced, with the “Diabetes” class representing a smaller proportion of observations. This will influence how we interpret log-loss and other metrics.</em></p>
 <hr>
 </section>
 <section id="traintest-split" class="level2">
 <h2 class="anchored" data-anchor-id="traintest-split">Train/Test Split</h2>
 <p>We now split the data into a training set (70%) and a test set (30%), stratifying on the binary outcome to preserve class proportions in each partition.</p>
-<pre class="{r}"><code>#| label: split-data
-#| message: false
-
-set.seed(2025)
-
-data_split &lt;- initial_split(
-  diabetes,
-  prop   = 0.7,
-  strata = Diabetes_binary
-)
-
-data_train &lt;- training(data_split)
-data_test  &lt;- testing(data_split)
-
-data_split</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">2025</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>data_split <span class="ot">&lt;-</span> <span class="fu">initial_split</span>(</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  diabetes,</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">prop   =</span> <span class="fl">0.7</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">strata =</span> Diabetes_binary</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>data_train <span class="ot">&lt;-</span> <span class="fu">training</span>(data_split)</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>data_test  <span class="ot">&lt;-</span> <span class="fu">testing</span>(data_split)</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(data_split)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>&lt;Training/Testing/Total&gt;
+&lt;177575/76105/253680&gt;</code></pre>
+</div>
+</div>
 <hr>
 </section>
 <section id="modeling-strategy-and-predictors" class="level2">
@@ -283,34 +316,43 @@ data_split</code></pre>
 <li>Handles missing values for nominal predictors via mode imputation.</li>
 <li>Creates dummy variables for nominal predictors.</li>
 </ul>
-<pre class="{r}"><code>#| label: recipe
-#| message: false
-
-diabetes_rec &lt;- recipe(
-  Diabetes_binary ~ HighBP + HighChol + BMI + Smoker +
-    PhysActivity + GenHlth + DiffWalk +
-    Age + Sex + Income,
-  data = data_train
-) |&gt;
-  step_impute_median(all_numeric_predictors()) |&gt;
-  step_impute_mode(all_nominal_predictors()) |&gt;
-  step_dummy(all_nominal_predictors())
-
-diabetes_rec</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>diabetes_rec <span class="ot">&lt;-</span> <span class="fu">recipe</span>(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  Diabetes_binary <span class="sc">~</span> HighBP <span class="sc">+</span> HighChol <span class="sc">+</span> BMI <span class="sc">+</span> Smoker <span class="sc">+</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    PhysActivity <span class="sc">+</span> GenHlth <span class="sc">+</span> DiffWalk <span class="sc">+</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    Age <span class="sc">+</span> Sex <span class="sc">+</span> Income,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> data_train</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">step_impute_median</span>(<span class="fu">all_numeric_predictors</span>()) <span class="sc">|&gt;</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">step_impute_mode</span>(<span class="fu">all_nominal_predictors</span>()) <span class="sc">|&gt;</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">step_dummy</span>(<span class="fu">all_nominal_predictors</span>())</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(diabetes_rec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
 <p>We also set up 5-fold cross-validation on the training data, stratifying by the outcome, and define a metric set centered on <strong>log-loss</strong> (here named <code>mn_log_loss</code> in this version of yardstick), with accuracy and ROC AUC for additional context.</p>
-<pre class="{r}"><code>#| label: resamples-and-metrics
-#| message: false
-
-set.seed(2025)
-folds &lt;- vfold_cv(
-  data_train,
-  v      = 5,
-  strata = Diabetes_binary
-)
-
-logloss_metrics &lt;- metric_set(mn_log_loss, accuracy, roc_auc)
-
-folds</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">2025</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>folds <span class="ot">&lt;-</span> <span class="fu">vfold_cv</span>(</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  data_train,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">v      =</span> <span class="dv">5</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">strata =</span> Diabetes_binary</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>logloss_metrics <span class="ot">&lt;-</span> <span class="fu">metric_set</span>(mn_log_loss, accuracy, roc_auc)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(folds)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>#  5-fold cross-validation using stratification 
+# A tibble: 5 × 2
+  splits                 id   
+  &lt;list&gt;                 &lt;chr&gt;
+1 &lt;split [142059/35516]&gt; Fold1
+2 &lt;split [142059/35516]&gt; Fold2
+3 &lt;split [142060/35515]&gt; Fold3
+4 &lt;split [142061/35514]&gt; Fold4
+5 &lt;split [142061/35514]&gt; Fold5</code></pre>
+</div>
+</div>
 <hr>
 </section>
 <section id="classification-tree" class="level2">
@@ -325,124 +367,209 @@ folds</code></pre>
 </li>
 <li><code>min_n</code>: minimum number of observations in a terminal node</li>
 </ul>
-<pre class="{r}"><code>#| label: tree-spec
-#| message: false
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>tree_spec <span class="ot">&lt;-</span> <span class="fu">decision_tree</span>(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">cost_complexity =</span> <span class="fu">tune</span>(),</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">tree_depth      =</span> <span class="fu">tune</span>(),</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">min_n           =</span> <span class="fu">tune</span>()</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set_engine</span>(<span class="st">"rpart"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set_mode</span>(<span class="st">"classification"</span>)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(tree_spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Decision Tree Model Specification (classification)
 
-tree_spec &lt;- decision_tree(
-  cost_complexity = tune(),
-  tree_depth      = tune(),
-  min_n           = tune()
-) |&gt;
-  set_engine("rpart") |&gt;
-  set_mode("classification")
+Main Arguments:
+  cost_complexity = tune()
+  tree_depth = tune()
+  min_n = tune()
 
-tree_spec</code></pre>
+Computational engine: rpart </code></pre>
+</div>
+</div>
 </section>
 <section id="tuning-grid" class="level3">
 <h3 class="anchored" data-anchor-id="tuning-grid">Tuning Grid</h3>
 <p>We create a regular grid of hyperparameters to explore a range of tree sizes and complexities.</p>
-<pre class="{r}"><code>#| label: tree-grid
-#| message: false
-
-tree_grid &lt;- grid_regular(
-  cost_complexity(range = c(-4, -1)),
-  tree_depth(range      = c(3, 10)),
-  min_n(range           = c(10, 50)),
-  levels = 3
-)
-
-tree_grid</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>tree_grid <span class="ot">&lt;-</span> <span class="fu">grid_regular</span>(</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cost_complexity</span>(<span class="at">range =</span> <span class="fu">c</span>(<span class="sc">-</span><span class="dv">4</span>, <span class="sc">-</span><span class="dv">1</span>)),</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tree_depth</span>(<span class="at">range      =</span> <span class="fu">c</span>(<span class="dv">3</span>, <span class="dv">10</span>)),</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">min_n</span>(<span class="at">range           =</span> <span class="fu">c</span>(<span class="dv">10</span>, <span class="dv">50</span>)),</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">levels =</span> <span class="dv">3</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(tree_grid)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 27 × 3
+   cost_complexity tree_depth min_n
+             &lt;dbl&gt;      &lt;int&gt; &lt;int&gt;
+ 1         0.0001           3    10
+ 2         0.00316          3    10
+ 3         0.1              3    10
+ 4         0.0001           6    10
+ 5         0.00316          6    10
+ 6         0.1              6    10
+ 7         0.0001          10    10
+ 8         0.00316         10    10
+ 9         0.1             10    10
+10         0.0001           3    30
+# ℹ 17 more rows</code></pre>
+</div>
+</div>
 </section>
 <section id="workflow-and-cross-validation" class="level3">
 <h3 class="anchored" data-anchor-id="workflow-and-cross-validation">Workflow and Cross-Validation</h3>
 <p>We combine the recipe and model into a workflow and use 5-fold cross-validation to estimate performance across the grid, focusing on log-loss.</p>
-<pre class="{r}"><code>#| label: tree-tuning
-#| message: false
-#| warning: false
-
-tree_wf &lt;- workflow() |&gt;
-  add_recipe(diabetes_rec) |&gt;
-  add_model(tree_spec)
-
-set.seed(2025)
-tree_res &lt;- tune_grid(
-  tree_wf,
-  resamples = folds,
-  grid      = tree_grid,
-  metrics   = logloss_metrics
-)
-
-tree_res</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>tree_wf <span class="ot">&lt;-</span> <span class="fu">workflow</span>() <span class="sc">|&gt;</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">add_recipe</span>(diabetes_rec) <span class="sc">|&gt;</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">add_model</span>(tree_spec)</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">2025</span>)</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>tree_res <span class="ot">&lt;-</span> <span class="fu">tune_grid</span>(</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>  tree_wf,</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">resamples =</span> folds,</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">grid      =</span> tree_grid,</span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">metrics   =</span> logloss_metrics</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(tree_res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># Tuning results
+# 5-fold cross-validation using stratification 
+# A tibble: 5 × 4
+  splits                 id    .metrics          .notes          
+  &lt;list&gt;                 &lt;chr&gt; &lt;list&gt;            &lt;list&gt;          
+1 &lt;split [142059/35516]&gt; Fold1 &lt;tibble [81 × 7]&gt; &lt;tibble [0 × 4]&gt;
+2 &lt;split [142059/35516]&gt; Fold2 &lt;tibble [81 × 7]&gt; &lt;tibble [0 × 4]&gt;
+3 &lt;split [142060/35515]&gt; Fold3 &lt;tibble [81 × 7]&gt; &lt;tibble [0 × 4]&gt;
+4 &lt;split [142061/35514]&gt; Fold4 &lt;tibble [81 × 7]&gt; &lt;tibble [0 × 4]&gt;
+5 &lt;split [142061/35514]&gt; Fold5 &lt;tibble [81 × 7]&gt; &lt;tibble [0 × 4]&gt;</code></pre>
+</div>
+</div>
 <p>We examine the best-performing tree configurations according to <strong>mn_log_loss</strong> (lower is better).</p>
-<pre class="{r}"><code>#| label: tree-best
-#| message: false
-
-show_best(tree_res, metric = "mn_log_loss", n = 10)</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">show_best</span>(tree_res, <span class="at">metric =</span> <span class="st">"mn_log_loss"</span>, <span class="at">n =</span> <span class="dv">10</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 10 × 9
+   cost_complexity tree_depth min_n .metric     .estimator  mean     n std_err
+             &lt;dbl&gt;      &lt;int&gt; &lt;int&gt; &lt;chr&gt;       &lt;chr&gt;      &lt;dbl&gt; &lt;int&gt;   &lt;dbl&gt;
+ 1         0.0001          10    50 mn_log_loss binary     0.343     5 0.00299
+ 2         0.0001          10    30 mn_log_loss binary     0.343     5 0.00301
+ 3         0.0001          10    10 mn_log_loss binary     0.346     5 0.00249
+ 4         0.0001           6    10 mn_log_loss binary     0.356     5 0.00137
+ 5         0.0001           6    30 mn_log_loss binary     0.356     5 0.00137
+ 6         0.0001           6    50 mn_log_loss binary     0.356     5 0.00137
+ 7         0.00316          6    10 mn_log_loss binary     0.356     5 0.00137
+ 8         0.00316          6    30 mn_log_loss binary     0.356     5 0.00137
+ 9         0.00316          6    50 mn_log_loss binary     0.356     5 0.00137
+10         0.00316         10    10 mn_log_loss binary     0.356     5 0.00137
+# ℹ 1 more variable: .config &lt;chr&gt;</code></pre>
+</div>
+</div>
 <p>We now select the single best set of hyperparameters and finalize the tree workflow.</p>
-<pre class="{r}"><code>#| label: tree-finalize
-#| message: false
+<div class="cell">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>best_tree <span class="ot">&lt;-</span> <span class="fu">select_best</span>(tree_res, <span class="at">metric =</span> <span class="st">"mn_log_loss"</span>)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(best_tree)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 1 × 4
+  cost_complexity tree_depth min_n .config         
+            &lt;dbl&gt;      &lt;int&gt; &lt;int&gt; &lt;chr&gt;           
+1          0.0001         10    50 pre0_mod09_post0</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>final_tree_wf <span class="ot">&lt;-</span> <span class="fu">finalize_workflow</span>(tree_wf, best_tree)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(final_tree_wf)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>══ Workflow ════════════════════════════════════════════════════════════════════
+Preprocessor: Recipe
+Model: decision_tree()
 
-best_tree &lt;- select_best(tree_res, metric = "mn_log_loss")
+── Preprocessor ────────────────────────────────────────────────────────────────
+3 Recipe Steps
 
-best_tree
+• step_impute_median()
+• step_impute_mode()
+• step_dummy()
 
-final_tree_wf &lt;- finalize_workflow(tree_wf, best_tree)
+── Model ───────────────────────────────────────────────────────────────────────
+Decision Tree Model Specification (classification)
 
-final_tree_wf</code></pre>
+Main Arguments:
+  cost_complexity = 1e-04
+  tree_depth = 10
+  min_n = 50
+
+Computational engine: rpart </code></pre>
+</div>
+</div>
 </section>
 <section id="fit-final-tree-and-evaluate-on-the-test-set" class="level3">
 <h3 class="anchored" data-anchor-id="fit-final-tree-and-evaluate-on-the-test-set">Fit Final Tree and Evaluate on the Test Set</h3>
 <p>We fit the finalized tree model on the full training data and evaluate its performance on the held-out test set.</p>
-<pre class="{r}"><code>#| label: tree-fit-test
-#| message: false
-#| warning: false
-
-final_tree_fit &lt;- final_tree_wf |&gt;
-  fit(data = data_train)
-
-tree_probs &lt;- predict(final_tree_fit, data_test, type = "prob") |&gt;
-  bind_cols(data_test |&gt; select(Diabetes_binary))
-
-tree_classes &lt;- predict(final_tree_fit, data_test, type = "class") |&gt;
-  bind_cols(data_test |&gt; select(Diabetes_binary))
-
-# --- metrics computed with correct prediction types ---
-
-# log-loss uses probabilities
-tree_logloss &lt;- mn_log_loss(
-  tree_probs,
-  truth   = Diabetes_binary,
-  .pred_Diabetes
-)
-
-# accuracy uses class predictions
-tree_accuracy &lt;- accuracy(
-  tree_classes,
-  truth   = Diabetes_binary,
-  .pred_class
-)
-
-# ROC AUC uses probabilities
-tree_roc &lt;- roc_auc(
-  tree_probs,
-  truth   = Diabetes_binary,
-  .pred_Diabetes
-)
-
-tree_metrics &lt;- bind_rows(tree_logloss, tree_accuracy, tree_roc)
-
-tree_cm &lt;- conf_mat(
-  tree_classes,
-  truth   = Diabetes_binary,
-  estimate = .pred_class
-)
-
-tree_metrics
-</code></pre>
-<pre class="{r}"><code>#| label: tree-conf-matrix
-#| message: false
-
-tree_cm</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>final_tree_fit <span class="ot">&lt;-</span> final_tree_wf <span class="sc">|&gt;</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fit</span>(<span class="at">data =</span> data_train)</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>tree_probs <span class="ot">&lt;-</span> <span class="fu">predict</span>(final_tree_fit, data_test, <span class="at">type =</span> <span class="st">"prob"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bind_cols</span>(data_test <span class="sc">|&gt;</span> <span class="fu">select</span>(Diabetes_binary))</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>tree_classes <span class="ot">&lt;-</span> <span class="fu">predict</span>(final_tree_fit, data_test, <span class="at">type =</span> <span class="st">"class"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bind_cols</span>(data_test <span class="sc">|&gt;</span> <span class="fu">select</span>(Diabetes_binary))</span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a><span class="co"># --- metrics computed with correct prediction types ---</span></span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a><span class="co"># log-loss uses probabilities</span></span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>tree_logloss <span class="ot">&lt;-</span> <span class="fu">mn_log_loss</span>(</span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>  tree_probs,</span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>  <span class="at">truth   =</span> Diabetes_binary,</span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>  .pred_Diabetes</span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a><span class="co"># accuracy uses class predictions</span></span>
+<span id="cb20-20"><a href="#cb20-20" aria-hidden="true" tabindex="-1"></a>tree_accuracy <span class="ot">&lt;-</span> <span class="fu">accuracy</span>(</span>
+<span id="cb20-21"><a href="#cb20-21" aria-hidden="true" tabindex="-1"></a>  tree_classes,</span>
+<span id="cb20-22"><a href="#cb20-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">truth   =</span> Diabetes_binary,</span>
+<span id="cb20-23"><a href="#cb20-23" aria-hidden="true" tabindex="-1"></a>  .pred_class</span>
+<span id="cb20-24"><a href="#cb20-24" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb20-25"><a href="#cb20-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-26"><a href="#cb20-26" aria-hidden="true" tabindex="-1"></a><span class="co"># ROC AUC uses probabilities</span></span>
+<span id="cb20-27"><a href="#cb20-27" aria-hidden="true" tabindex="-1"></a>tree_roc <span class="ot">&lt;-</span> <span class="fu">roc_auc</span>(</span>
+<span id="cb20-28"><a href="#cb20-28" aria-hidden="true" tabindex="-1"></a>  tree_probs,</span>
+<span id="cb20-29"><a href="#cb20-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">truth   =</span> Diabetes_binary,</span>
+<span id="cb20-30"><a href="#cb20-30" aria-hidden="true" tabindex="-1"></a>  .pred_Diabetes</span>
+<span id="cb20-31"><a href="#cb20-31" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb20-32"><a href="#cb20-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-33"><a href="#cb20-33" aria-hidden="true" tabindex="-1"></a>tree_metrics <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(tree_logloss, tree_accuracy, tree_roc)</span>
+<span id="cb20-34"><a href="#cb20-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-35"><a href="#cb20-35" aria-hidden="true" tabindex="-1"></a>tree_cm <span class="ot">&lt;-</span> <span class="fu">conf_mat</span>(</span>
+<span id="cb20-36"><a href="#cb20-36" aria-hidden="true" tabindex="-1"></a>  tree_classes,</span>
+<span id="cb20-37"><a href="#cb20-37" aria-hidden="true" tabindex="-1"></a>  <span class="at">truth   =</span> Diabetes_binary,</span>
+<span id="cb20-38"><a href="#cb20-38" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> .pred_class</span>
+<span id="cb20-39"><a href="#cb20-39" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb20-40"><a href="#cb20-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-41"><a href="#cb20-41" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(tree_metrics)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 3 × 3
+  .metric     .estimator .estimate
+  &lt;chr&gt;       &lt;chr&gt;          &lt;dbl&gt;
+1 mn_log_loss binary         2.10 
+2 accuracy    binary         0.866
+3 roc_auc     binary         0.250</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(tree_cm)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>             Truth
+Prediction    No_diabetes Diabetes
+  No_diabetes       64446     9165
+  Diabetes           1055     1439</code></pre>
+</div>
+</div>
 <hr>
 </section>
 </section>
@@ -459,152 +586,261 @@ tree_cm</code></pre>
 <li><code>trees</code>: total number of trees in the forest</li>
 </ul>
 <p>we were using 1000 trees but reduced to 10 because of the computational time</p>
-<pre class="{r}"><code>#| label: rf-spec
-#| message: false
+<div class="cell">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>rf_spec <span class="ot">&lt;-</span> <span class="fu">rand_forest</span>(</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">mtry  =</span> <span class="fu">tune</span>(),</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">min_n =</span> <span class="fu">tune</span>(),</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">trees =</span> <span class="dv">10</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set_engine</span>(<span class="st">"ranger"</span>, <span class="at">importance =</span> <span class="st">"impurity"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set_mode</span>(<span class="st">"classification"</span>)</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(rf_spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Random Forest Model Specification (classification)
 
-rf_spec &lt;- rand_forest(
-  mtry  = tune(),
-  min_n = tune(),
+Main Arguments:
+  mtry = tune()
   trees = 10
-) |&gt;
-  set_engine("ranger", importance = "impurity") |&gt;
-  set_mode("classification")
+  min_n = tune()
 
-rf_spec</code></pre>
+Engine-Specific Arguments:
+  importance = impurity
+
+Computational engine: ranger </code></pre>
+</div>
+</div>
 </section>
 <section id="tuning-grid-1" class="level3">
 <h3 class="anchored" data-anchor-id="tuning-grid-1">Tuning Grid</h3>
 <p>We set up a grid for <code>mtry</code> and <code>min_n</code>. Because the number of predictors after dummy encoding is not known ahead of time, we estimate a reasonable range for <code>mtry</code> based on the training data.</p>
-<pre class="{r}"><code>#| label: rf-grid
-#| message: false
-
-# approximate number of predictors after dummying
-prep_rec &lt;- diabetes_rec |&gt;
-  prep(training = data_train)
-
-train_processed &lt;- bake(prep_rec, new_data = data_train)
-
-n_pred &lt;- ncol(train_processed) - 1  # subtract outcome
-
-n_pred
-
-rf_grid &lt;- grid_regular(
-  mtry(range = c(2, min(10, n_pred))),
-  min_n(range = c(5, 25)),
-  levels = 4
-)
-
-rf_grid</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="co"># approximate number of predictors after dummying</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>prep_rec <span class="ot">&lt;-</span> diabetes_rec <span class="sc">|&gt;</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">prep</span>(<span class="at">training =</span> data_train)</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>train_processed <span class="ot">&lt;-</span> <span class="fu">bake</span>(prep_rec, <span class="at">new_data =</span> data_train)</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>n_pred <span class="ot">&lt;-</span> <span class="fu">ncol</span>(train_processed) <span class="sc">-</span> <span class="dv">1</span>  <span class="co"># subtract outcome</span></span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(n_pred)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 24</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>rf_grid <span class="ot">&lt;-</span> <span class="fu">grid_regular</span>(</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mtry</span>(<span class="at">range =</span> <span class="fu">c</span>(<span class="dv">2</span>, <span class="fu">min</span>(<span class="dv">10</span>, n_pred))),</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">min_n</span>(<span class="at">range =</span> <span class="fu">c</span>(<span class="dv">5</span>, <span class="dv">25</span>)),</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">levels =</span> <span class="dv">4</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(rf_grid)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 16 × 2
+    mtry min_n
+   &lt;int&gt; &lt;int&gt;
+ 1     2     5
+ 2     4     5
+ 3     7     5
+ 4    10     5
+ 5     2    11
+ 6     4    11
+ 7     7    11
+ 8    10    11
+ 9     2    18
+10     4    18
+11     7    18
+12    10    18
+13     2    25
+14     4    25
+15     7    25
+16    10    25</code></pre>
+</div>
+</div>
 </section>
 <section id="workflow-and-cross-validation-1" class="level3">
 <h3 class="anchored" data-anchor-id="workflow-and-cross-validation-1">Workflow and Cross-Validation</h3>
 <p>We create a workflow for the random forest model and tune it using the same 5-fold cross-validation folds and log-loss metric.</p>
-<pre class="{r}"><code>#| label: rf-tuning
-#| message: false
-#| warning: false
-
-rf_wf &lt;- workflow() |&gt;
-  add_recipe(diabetes_rec) |&gt;
-  add_model(rf_spec)
-
-set.seed(2025)
-rf_res &lt;- tune_grid(
-  rf_wf,
-  resamples = folds,
-  grid      = rf_grid,
-  metrics   = logloss_metrics
-)
-
-rf_res</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>rf_wf <span class="ot">&lt;-</span> <span class="fu">workflow</span>() <span class="sc">|&gt;</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">add_recipe</span>(diabetes_rec) <span class="sc">|&gt;</span></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">add_model</span>(rf_spec)</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">2025</span>)</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>rf_res <span class="ot">&lt;-</span> <span class="fu">tune_grid</span>(</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>  rf_wf,</span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">resamples =</span> folds,</span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">grid      =</span> rf_grid,</span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">metrics   =</span> logloss_metrics</span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(rf_res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># Tuning results
+# 5-fold cross-validation using stratification 
+# A tibble: 5 × 4
+  splits                 id    .metrics          .notes          
+  &lt;list&gt;                 &lt;chr&gt; &lt;list&gt;            &lt;list&gt;          
+1 &lt;split [142059/35516]&gt; Fold1 &lt;tibble [48 × 6]&gt; &lt;tibble [0 × 4]&gt;
+2 &lt;split [142059/35516]&gt; Fold2 &lt;tibble [48 × 6]&gt; &lt;tibble [0 × 4]&gt;
+3 &lt;split [142060/35515]&gt; Fold3 &lt;tibble [48 × 6]&gt; &lt;tibble [0 × 4]&gt;
+4 &lt;split [142061/35514]&gt; Fold4 &lt;tibble [48 × 6]&gt; &lt;tibble [0 × 4]&gt;
+5 &lt;split [142061/35514]&gt; Fold5 &lt;tibble [48 × 6]&gt; &lt;tibble [0 × 4]&gt;</code></pre>
+</div>
+</div>
 <p>We examine the best-performing random forest configurations.</p>
-<pre class="{r}"><code>#| label: rf-best
-#| message: false
-
-show_best(rf_res, metric = "mn_log_loss", n = 10)</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="fu">show_best</span>(rf_res, <span class="at">metric =</span> <span class="st">"mn_log_loss"</span>, <span class="at">n =</span> <span class="dv">10</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 10 × 8
+    mtry min_n .metric     .estimator  mean     n  std_err .config         
+   &lt;int&gt; &lt;int&gt; &lt;chr&gt;       &lt;chr&gt;      &lt;dbl&gt; &lt;int&gt;    &lt;dbl&gt; &lt;chr&gt;           
+ 1     4    25 mn_log_loss binary     0.323     5 0.000760 pre0_mod08_post0
+ 2     4    18 mn_log_loss binary     0.324     5 0.000546 pre0_mod07_post0
+ 3     4    11 mn_log_loss binary     0.324     5 0.000631 pre0_mod06_post0
+ 4     2    25 mn_log_loss binary     0.324     5 0.000613 pre0_mod04_post0
+ 5     2     5 mn_log_loss binary     0.324     5 0.000579 pre0_mod01_post0
+ 6     2    18 mn_log_loss binary     0.324     5 0.000766 pre0_mod03_post0
+ 7     2    11 mn_log_loss binary     0.325     5 0.000688 pre0_mod02_post0
+ 8     4     5 mn_log_loss binary     0.327     5 0.000876 pre0_mod05_post0
+ 9     7    25 mn_log_loss binary     0.336     5 0.00183  pre0_mod12_post0
+10     7    18 mn_log_loss binary     0.341     5 0.00185  pre0_mod11_post0</code></pre>
+</div>
+</div>
 <p>We then select the best tuning parameters and finalize the workflow.</p>
-<pre class="{r}"><code>#| label: rf-finalize
-#| message: false
+<div class="cell">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>best_rf <span class="ot">&lt;-</span> <span class="fu">select_best</span>(rf_res, <span class="at">metric =</span> <span class="st">"mn_log_loss"</span>)</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(best_rf)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 1 × 3
+   mtry min_n .config         
+  &lt;int&gt; &lt;int&gt; &lt;chr&gt;           
+1     4    25 pre0_mod08_post0</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>final_rf_wf <span class="ot">&lt;-</span> <span class="fu">finalize_workflow</span>(rf_wf, best_rf)</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(final_rf_wf)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>══ Workflow ════════════════════════════════════════════════════════════════════
+Preprocessor: Recipe
+Model: rand_forest()
 
-best_rf &lt;- select_best(rf_res, metric = "mn_log_loss")
+── Preprocessor ────────────────────────────────────────────────────────────────
+3 Recipe Steps
 
-best_rf
+• step_impute_median()
+• step_impute_mode()
+• step_dummy()
 
-final_rf_wf &lt;- finalize_workflow(rf_wf, best_rf)
+── Model ───────────────────────────────────────────────────────────────────────
+Random Forest Model Specification (classification)
 
-final_rf_wf</code></pre>
+Main Arguments:
+  mtry = 4
+  trees = 10
+  min_n = 25
+
+Engine-Specific Arguments:
+  importance = impurity
+
+Computational engine: ranger </code></pre>
+</div>
+</div>
 </section>
 <section id="fit-final-random-forest-and-evaluate-on-the-test-set" class="level3">
 <h3 class="anchored" data-anchor-id="fit-final-random-forest-and-evaluate-on-the-test-set">Fit Final Random Forest and Evaluate on the Test Set</h3>
 <p>We fit the finalized random forest on the full training data and evaluate it on the test set.</p>
-<pre class="{r}"><code>#| label: rf-fit-test
-#| message: false
-#| warning: false
-
-final_rf_fit &lt;- final_rf_wf |&gt;
-  fit(data = data_train)
-
-rf_probs &lt;- predict(final_rf_fit, data_test, type = "prob") |&gt;
-  bind_cols(data_test |&gt; select(Diabetes_binary))
-
-rf_classes &lt;- predict(final_rf_fit, data_test, type = "class") |&gt;
-  bind_cols(data_test |&gt; select(Diabetes_binary))
-
-# --- metrics with correct prediction types ---
-
-# log-loss uses probabilities
-rf_logloss &lt;- mn_log_loss(
-  rf_probs,
-  truth   = Diabetes_binary,
-  .pred_Diabetes
-)
-
-# accuracy uses class predictions
-rf_accuracy &lt;- accuracy(
-  rf_classes,
-  truth   = Diabetes_binary,
-  .pred_class
-)
-
-# ROC AUC uses probabilities
-rf_roc &lt;- roc_auc(
-  rf_probs,
-  truth   = Diabetes_binary,
-  .pred_Diabetes
-)
-
-rf_metrics &lt;- bind_rows(rf_logloss, rf_accuracy, rf_roc)
-
-rf_cm &lt;- conf_mat(
-  rf_classes,
-  truth    = Diabetes_binary,
-  estimate = .pred_class
-)
-
-rf_metrics
-</code></pre>
-<pre class="{r}"><code>#| label: rf-conf-matrix
-#| message: false
-
-rf_cm</code></pre>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>final_rf_fit <span class="ot">&lt;-</span> final_rf_wf <span class="sc">|&gt;</span></span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fit</span>(<span class="at">data =</span> data_train)</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>rf_probs <span class="ot">&lt;-</span> <span class="fu">predict</span>(final_rf_fit, data_test, <span class="at">type =</span> <span class="st">"prob"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bind_cols</span>(data_test <span class="sc">|&gt;</span> <span class="fu">select</span>(Diabetes_binary))</span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>rf_classes <span class="ot">&lt;-</span> <span class="fu">predict</span>(final_rf_fit, data_test, <span class="at">type =</span> <span class="st">"class"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bind_cols</span>(data_test <span class="sc">|&gt;</span> <span class="fu">select</span>(Diabetes_binary))</span>
+<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a><span class="co"># --- metrics with correct prediction types ---</span></span>
+<span id="cb38-11"><a href="#cb38-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-12"><a href="#cb38-12" aria-hidden="true" tabindex="-1"></a><span class="co"># log-loss uses probabilities</span></span>
+<span id="cb38-13"><a href="#cb38-13" aria-hidden="true" tabindex="-1"></a>rf_logloss <span class="ot">&lt;-</span> <span class="fu">mn_log_loss</span>(</span>
+<span id="cb38-14"><a href="#cb38-14" aria-hidden="true" tabindex="-1"></a>  rf_probs,</span>
+<span id="cb38-15"><a href="#cb38-15" aria-hidden="true" tabindex="-1"></a>  <span class="at">truth   =</span> Diabetes_binary,</span>
+<span id="cb38-16"><a href="#cb38-16" aria-hidden="true" tabindex="-1"></a>  .pred_Diabetes</span>
+<span id="cb38-17"><a href="#cb38-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb38-18"><a href="#cb38-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-19"><a href="#cb38-19" aria-hidden="true" tabindex="-1"></a><span class="co"># accuracy uses class predictions</span></span>
+<span id="cb38-20"><a href="#cb38-20" aria-hidden="true" tabindex="-1"></a>rf_accuracy <span class="ot">&lt;-</span> <span class="fu">accuracy</span>(</span>
+<span id="cb38-21"><a href="#cb38-21" aria-hidden="true" tabindex="-1"></a>  rf_classes,</span>
+<span id="cb38-22"><a href="#cb38-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">truth   =</span> Diabetes_binary,</span>
+<span id="cb38-23"><a href="#cb38-23" aria-hidden="true" tabindex="-1"></a>  .pred_class</span>
+<span id="cb38-24"><a href="#cb38-24" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb38-25"><a href="#cb38-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-26"><a href="#cb38-26" aria-hidden="true" tabindex="-1"></a><span class="co"># ROC AUC uses probabilities</span></span>
+<span id="cb38-27"><a href="#cb38-27" aria-hidden="true" tabindex="-1"></a>rf_roc <span class="ot">&lt;-</span> <span class="fu">roc_auc</span>(</span>
+<span id="cb38-28"><a href="#cb38-28" aria-hidden="true" tabindex="-1"></a>  rf_probs,</span>
+<span id="cb38-29"><a href="#cb38-29" aria-hidden="true" tabindex="-1"></a>  <span class="at">truth   =</span> Diabetes_binary,</span>
+<span id="cb38-30"><a href="#cb38-30" aria-hidden="true" tabindex="-1"></a>  .pred_Diabetes</span>
+<span id="cb38-31"><a href="#cb38-31" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb38-32"><a href="#cb38-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-33"><a href="#cb38-33" aria-hidden="true" tabindex="-1"></a>rf_metrics <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(rf_logloss, rf_accuracy, rf_roc)</span>
+<span id="cb38-34"><a href="#cb38-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-35"><a href="#cb38-35" aria-hidden="true" tabindex="-1"></a>rf_cm <span class="ot">&lt;-</span> <span class="fu">conf_mat</span>(</span>
+<span id="cb38-36"><a href="#cb38-36" aria-hidden="true" tabindex="-1"></a>  rf_classes,</span>
+<span id="cb38-37"><a href="#cb38-37" aria-hidden="true" tabindex="-1"></a>  <span class="at">truth    =</span> Diabetes_binary,</span>
+<span id="cb38-38"><a href="#cb38-38" aria-hidden="true" tabindex="-1"></a>  <span class="at">estimate =</span> .pred_class</span>
+<span id="cb38-39"><a href="#cb38-39" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb38-40"><a href="#cb38-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-41"><a href="#cb38-41" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(rf_metrics)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 3 × 3
+  .metric     .estimator .estimate
+  &lt;chr&gt;       &lt;chr&gt;          &lt;dbl&gt;
+1 mn_log_loss binary         2.75 
+2 accuracy    binary         0.865
+3 roc_auc     binary         0.181</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(rf_cm)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>             Truth
+Prediction    No_diabetes Diabetes
+  No_diabetes       64627     9398
+  Diabetes            874     1206</code></pre>
+</div>
+</div>
 <hr>
 </section>
 </section>
 <section id="final-model-comparison" class="level2">
 <h2 class="anchored" data-anchor-id="final-model-comparison">Final Model Comparison</h2>
 <p>We now compare the <strong>test set performance</strong> of the tuned classification tree and random forest models. Our primary metric is <strong>log-loss</strong> (reported here as <code>mn_log_loss</code>, lower is better), but we also consider accuracy and ROC AUC.</p>
-<pre class="{r}"><code>#| label: compare-models
-#| message: false
-
-tree_summary &lt;- tree_metrics |&gt;
-  mutate(model = "Classification tree")
-
-rf_summary &lt;- rf_metrics |&gt;
-  mutate(model = "Random forest")
-
-bind_rows(tree_summary, rf_summary) |&gt;
-  select(model, .metric, .estimate) |&gt;
-  arrange(.metric, desc(.estimate))</code></pre>
-<p><em>Typically we expect the random forest to outperform a single tree on log-loss and ROC AUC due to its ensemble nature and better ability to capture complex interactions.reducing the tree parameters for 10 caused the random forest to be slightly worse than the classification tree, so likely this will be our champion model.</em></p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>tree_summary <span class="ot">&lt;-</span> tree_metrics <span class="sc">|&gt;</span></span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">model =</span> <span class="st">"Classification tree"</span>)</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>rf_summary <span class="ot">&lt;-</span> rf_metrics <span class="sc">|&gt;</span></span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">model =</span> <span class="st">"Random forest"</span>)</span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a>comparison <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(tree_summary, rf_summary) <span class="sc">|&gt;</span></span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(model, .metric, .estimate) <span class="sc">|&gt;</span></span>
+<span id="cb42-9"><a href="#cb42-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(.metric, <span class="fu">desc</span>(.estimate))</span>
+<span id="cb42-10"><a href="#cb42-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-11"><a href="#cb42-11" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(comparison)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 6 × 3
+  model               .metric     .estimate
+  &lt;chr&gt;               &lt;chr&gt;           &lt;dbl&gt;
+1 Classification tree accuracy        0.866
+2 Random forest       accuracy        0.865
+3 Random forest       mn_log_loss     2.75 
+4 Classification tree mn_log_loss     2.10 
+5 Classification tree roc_auc         0.250
+6 Random forest       roc_auc         0.181</code></pre>
+</div>
+</div>
+<p><em>Typically we expect the random forest to outperform a single tree on log-loss and ROC AUC due to its ensemble nature and better ability to capture complex interactions. However reducing the tree parameters in the random forest model = 10 caused the random forest to be slightly worse than the classification tree, so likely this will be our champion model.</em></p>
 <hr>
 </section>
 <section id="conclusion" class="level2">
@@ -618,7 +854,89 @@ bind_rows(tree_summary, rf_summary) |&gt;
 <li>Tuned a random forest model using the same resampling scheme and metrics.</li>
 <li>Compared the tuned tree and random forest on the test set.</li>
 </ul>
-<p>Based on the test set results, we select the model with the <strong>lowest log-loss</strong> (and typically higher ROC AUC) as our final model. This chosen model will be refit on the full dataset and exposed via a <strong>plumber API</strong> in the next stage of the project.</p>
+<p>Based on the test set results, we select the model with the <strong>lowest log-loss</strong> (and typically higher ROC AUC) as our final model. This chosen/champion model will be refit on the full dataset and exposed via a <strong>plumber API</strong> in the next stage of the project.</p>
+</section>
+<section id="saving-champion-model" class="level2">
+<h2 class="anchored" data-anchor-id="saving-champion-model">Saving champion model</h2>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Make sure the 'model' directory exists</span></span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">dir.exists</span>(<span class="st">"model"</span>)) <span class="fu">dir.create</span>(<span class="st">"model"</span>)</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Print champion model (optional)</span></span>
+<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(final_tree_fit)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>══ Workflow [trained] ══════════════════════════════════════════════════════════
+Preprocessor: Recipe
+Model: decision_tree()
+
+── Preprocessor ────────────────────────────────────────────────────────────────
+3 Recipe Steps
+
+• step_impute_median()
+• step_impute_mode()
+• step_dummy()
+
+── Model ───────────────────────────────────────────────────────────────────────
+n= 177575 
+
+node), split, n, loss, yval, (yprob)
+      * denotes terminal node
+
+   1) root 177575 24742 No_diabetes (0.86066732 0.13933268)  
+     2) HighBP&lt; 0.5 101438  6160 No_diabetes (0.93927325 0.06072675) *
+     3) HighBP&gt;=0.5 76137 18582 No_diabetes (0.75593995 0.24406005)  
+       6) GenHlth_1&lt; 0.1581139 55922 10469 No_diabetes (0.81279282 0.18720718)  
+        12) GenHlth_1&lt; -0.1581139 28633  3525 No_diabetes (0.87689030 0.12310970)  
+          24) BMI&lt; 32.5 23381  2415 No_diabetes (0.89671100 0.10328900) *
+          25) BMI&gt;=32.5 5252  1110 No_diabetes (0.78865194 0.21134806)  
+            50) HighChol&lt; 0.5 2644   389 No_diabetes (0.85287443 0.14712557) *
+            51) HighChol&gt;=0.5 2608   721 No_diabetes (0.72354294 0.27645706)  
+             102) DiffWalk&lt; 0.5 2180   550 No_diabetes (0.74770642 0.25229358) *
+             103) DiffWalk&gt;=0.5 428   171 No_diabetes (0.60046729 0.39953271)  
+               206) Sex_Male&lt; 0.5 275    96 No_diabetes (0.65090909 0.34909091)  
+                 412) Income&gt;=3.5 212    65 No_diabetes (0.69339623 0.30660377) *
+                 413) Income&lt; 3.5 63    31 No_diabetes (0.50793651 0.49206349)  
+                   826) PhysActivity&gt;=0.5 33    12 No_diabetes (0.63636364 0.36363636) *
+                   827) PhysActivity&lt; 0.5 30    11 Diabetes (0.36666667 0.63333333) *
+               207) Sex_Male&gt;=0.5 153    75 No_diabetes (0.50980392 0.49019608)  
+                 414) Age_10&gt;=0.06757444 70    25 No_diabetes (0.64285714 0.35714286) *
+                 415) Age_10&lt; 0.06757444 83    33 Diabetes (0.39759036 0.60240964) *
+        13) GenHlth_1&gt;=-0.1581139 27289  6944 No_diabetes (0.74553850 0.25446150)  
+          26) BMI&lt; 31.5 17264  3577 No_diabetes (0.79280584 0.20719416) *
+          27) BMI&gt;=31.5 10025  3367 No_diabetes (0.66413965 0.33586035)  
+            54) Age_01&lt; 0.1111874 4482  1109 No_diabetes (0.75256582 0.24743418)  
+             108) HighChol&lt; 0.5 2125   345 No_diabetes (0.83764706 0.16235294) *
+             109) HighChol&gt;=0.5 2357   764 No_diabetes (0.67585914 0.32414086)  
+               218) DiffWalk&lt; 0.5 1886   562 No_diabetes (0.70201485 0.29798515) *
+               219) DiffWalk&gt;=0.5 471   202 No_diabetes (0.57112527 0.42887473)  
+                 438) BMI&lt; 33.5 107    34 No_diabetes (0.68224299 0.31775701) *
+                 439) BMI&gt;=33.5 364   168 No_diabetes (0.53846154 0.46153846)  
+                   878) Age_12&gt;=-0.3077051 141    56 No_diabetes (0.60283688 0.39716312)  
+                    1756) BMI&lt; 42.5 87    27 No_diabetes (0.68965517 0.31034483) *
+                    1757) BMI&gt;=42.5 54    25 Diabetes (0.46296296 0.53703704) *
+                   879) Age_12&lt; -0.3077051 223   111 Diabetes (0.49775785 0.50224215)  
+                    1758) Sex_Male&lt; 0.5 150    69 No_diabetes (0.54000000 0.46000000) *
+                    1759) Sex_Male&gt;=0.5 73    30 Diabetes (0.41095890 0.58904110) *
+            55) Age_01&gt;=0.1111874 5543  2258 No_diabetes (0.59263936 0.40736064)  
+             110) HighChol&lt; 0.5 1928   647 No_diabetes (0.66441909 0.33558091)  
+               220) Sex_Male&lt; 0.5 1091   336 No_diabetes (0.69202566 0.30797434) *
+               221) Sex_Male&gt;=0.5 837   311 No_diabetes (0.62843489 0.37156511)  
+                 442) BMI&lt; 39.5 690   239 No_diabetes (0.65362319 0.34637681) *
+                 443) BMI&gt;=39.5 147    72 No_diabetes (0.51020408 0.48979592)  
+                   886) Income&gt;=3.5 123    56 No_diabetes (0.54471545 0.45528455)  
+                    1772) Age_06&lt; 0.1845419 79    31 No_diabetes (0.60759494 0.39240506) *
+                    1773) Age_06&gt;=0.1845419 44    19 Diabetes (0.43181818 0.56818182) *
+                   887) Income&lt; 3.5 24     8 Diabetes (0.33333333 0.66666667) *
+
+...
+and 96 more lines.</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Save final fitted tree workflow and the recipe</span></span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a><span class="fu">saveRDS</span>(final_tree_fit, <span class="st">"model/final_tree_fit.rds"</span>)</span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a><span class="fu">saveRDS</span>(diabetes_rec, <span class="st">"model/recipe.rds"</span>)</span>
+<span id="cb46-4"><a href="#cb46-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-5"><a href="#cb46-5" aria-hidden="true" tabindex="-1"></a><span class="fu">message</span>(<span class="st">"Champion model saved successfully!"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
 
 
 </section>
